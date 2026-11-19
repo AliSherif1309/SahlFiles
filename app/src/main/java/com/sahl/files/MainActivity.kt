@@ -179,6 +179,10 @@ class MainActivity : Activity() {
         act("✎", t("Rename", "تسمية")) { rename() }
         act("🗑", t("Delete", "حذف")) { delete() }
         act("↗", t("Share", "مشاركة")) { Fs.share(this, sel.toList()) }
+        act("⧉↗", t("Open with", "فتح بواسطة")) {
+            val f = sel.singleOrNull()?.takeIf { it.isFile }
+            if (f == null) toast(t("Select one file", "حدّد ملفًا واحدًا")) else { sel.clear(); refreshBars(); adapter.notifyDataSetChanged(); Fs.open(this, f) }
+        }
         act("🗜", t("Zip", "ضغط")) { zipSelected() }
         act("★", t("Favourite", "مفضلة")) { toggleFav() }
         act("📡", t("Send", "إرسال")) { sendWifi() }
@@ -326,7 +330,11 @@ class MainActivity : Activity() {
     private fun openFile(f: File) {
         val old = (prefs.getString("recent", "") ?: "").split('\n').filter { it.isNotEmpty() && it != f.absolutePath }
         prefs.edit().putString("recent", (listOf(f.absolutePath) + old).take(40).joinToString("\n")).apply()
-        if (Zip.isZip(f)) zipMenu(f) else Fs.open(this, f)
+        when {
+            Zip.isZip(f) -> zipMenu(f)
+            ViewerActivity.kind(f) != null -> startActivity(Intent(this, ViewerActivity::class.java).putExtra("path", f.absolutePath))
+            else -> Fs.open(this, f)
+        }
     }
 
     private fun toggleFav() {
