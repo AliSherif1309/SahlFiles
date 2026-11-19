@@ -61,7 +61,13 @@ class MainActivity : Activity() {
     private val sel = LinkedHashSet<File>()
     private var clip: List<File> = emptyList()
     private var clipMove = false
-    private val positions = HashMap<String, Int>()
+    private val positions = HashMap<String, Pair<Int, Int>>()   // folder -> (first row, its offset)
+    private var pendingSelect: String? = null
+
+    private fun savePos() {
+        if (!::list.isInitialized || searching != null) return
+        positions[dir.absolutePath] = list.firstVisiblePosition to (list.getChildAt(0)?.top ?: 0)
+    }
 
     private var sort: Int
         get() = prefs.getInt("sort", 0)              // 0 name, 1 newest, 2 largest, 3 type
@@ -82,11 +88,15 @@ class MainActivity : Activity() {
         super.onCreate(b)
         C.init(this)
         intent.getStringExtra("path")?.let { dir = File(it) }
+        pendingSelect = intent.getStringExtra("select")
     }
+
+    override fun onPause() { super.onPause(); savePos() }
 
     override fun onNewIntent(i: Intent) {
         super.onNewIntent(i)
-        i.getStringExtra("path")?.let { if (built) load(File(it)) else dir = File(it) }
+        // remember where to go; onResume (right after this) loads it, so the two never race
+        i.getStringExtra("path")?.let { savePos(); dir = File(it); searching = null; pendingSelect = i.getStringExtra("select") }
     }
 
     override fun onResume() {
@@ -95,7 +105,7 @@ class MainActivity : Activity() {
         if (!built) { build(); built = true; Thread { Trash.autoClean() }.start() }
         val v = virtual; virtual = null
         if (v != null) showVirtual("📊 " + v.first, v.second)
-        else if (searching == null) load(dir, keep = true)
+        else if (searching == null) { val sel0 = pendingSelect; pendingSelect = null; load(dir, keep = true, select = sel0) }
         Updater.checkOnStart(this)
     }
 
@@ -263,18 +273,20 @@ class MainActivity : Activity() {
     // ------------------------------------------------------------------ listing
 
     private fun sorted(fs: List<File>): List<File> {
+        val len = HashMap<File, Long>(fs.size * 2); val mod = HashMap<File, Long>(fs.size * 2); val isDir = HashMap<File, Boolean>(fs.size * 2)
+        for (f in fs) { val d = f.isDirectory; isDir[f] = d; len[f] = if (d) dirSizes[f.absolutePath] ?: 0L else f.length(); if (sort == 1) mod[f] = f.lastModified() }
         val byName = compareBy<File, String>(String.CASE_INSENSITIVE_ORDER) { it.name }
         val c: Comparator<File> = when (sort) {
-            1 -> compareByDescending<File> { it.lastModified() }
-            2 -> compareByDescending<File> { if (it.isFile) it.length() else dirSizes[it.absolutePath] ?: 0L }.then(byName)
+            1 -> compareByDescending<File> { mod[it] ?: 0L }
+            2 -> compareByDescending<File> { len[it] ?: 0L }.then(byName)
             3 -> compareBy<File> { it.extension.lowercase() }.then(byName)
             else -> byName
         }
-        return fs.sortedWith(compareBy<File> { !it.isDirectory }.then(c))
+        return fs.sortedWith(compareBy<File> { isDir[it] != true }.then(c))
     }
 
     private fun load(d: File, keep: Boolean = false, select: String? = null) {
-        if (!keep && ::list.isInitialized) positions[dir.absolutePath] = list.firstVisiblePosition
+        if (!keep) savePos()
         searching = null
         val target = if (d.isDirectory) d else Fs.root
         Thread {
@@ -290,8 +302,13 @@ class MainActivity : Activity() {
                 empty.gone(items.isNotEmpty())
                 storage()
                 refreshBars()
-                val pos = select?.let { p -> items.indexOfFirst { it.absolutePath == p } }?.takeIf { it >= 0 } ?: positions[target.absolutePath] ?: 0
-                if (items.isNotEmpty()) list.setSelection(pos.coerceIn(0, items.size - 1))
+                val picked = select?.let { p -> items.indexOfFirst { it.absolutePath == p } }?.takeIf { it >= 0 }
+                val saved = positions[target.absolutePath]
+                if (items.isNotEmpty()) when {
+                    picked != null -> list.setSelectionFromTop(picked, dp(120))
+                    saved != null -> list.setSelectionFromTop(saved.first.coerceIn(0, items.size - 1), saved.second)
+                    else -> list.setSelection(0)
+                }
                 measureFolders()
             }
         }.start()

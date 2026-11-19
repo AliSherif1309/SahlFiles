@@ -103,13 +103,14 @@ class ShareService : Service(), Lan.Events {
         }
     }
 
-    override fun received(f: File) { ui?.received(f) }
+    @Volatile private var last: File? = null
+    override fun received(f: File) { last = f; ui?.received(f) }
 
     override fun finished(count: Int, from: String) {
         getSystemService(NotificationManager::class.java).notify(1, note(t("Visible on Wi-Fi as ${Lan.alias(this)}", "ظاهر على الواي فاي باسم ${Lan.alias(this)}"), Lan.ip()))
         main.post { ui?.finished(count, from) }
         alert(3, t("Received $count files from $from", "تم استلام $count ملف من $from"), t("Saved in Download/Sahl Files", "حُفظت في التنزيلات/Sahl Files"),
-            openApp(MainActivity::class.java) { it.putExtra("path", Fs.received.absolutePath) })
+            openApp(MainActivity::class.java) { val l = last; it.putExtra("path", (l?.parentFile ?: Fs.received).absolutePath).putExtra("select", l?.absolutePath) })
     }
 
     override fun message(from: String, text: String) {

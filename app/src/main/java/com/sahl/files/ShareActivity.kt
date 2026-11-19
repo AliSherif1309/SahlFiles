@@ -135,11 +135,12 @@ class ShareActivity : Activity(), Lan.Events {
 
         // browser
         val web = cardBox()
-        web.addView(label(t("From a browser (PC, TV, iPhone…)", "من المتصفح (كمبيوتر، تلفاز، آيفون…)"), 15f, C.GREEN, true))
+        web.addView(label(t("Browser file manager (PC, TV, iPhone…)", "إدارة الملفات من المتصفح (كمبيوتر، تلفاز، آيفون…)"), 15f, C.GREEN, true))
         webTv = label("", 15f, C.TEXT).apply { setPadding(0, dp(6), 0, dp(4)); setTextIsSelectable(true) }
         web.addView(webTv)
-        web.addView(label(t("Open the address on the same Wi-Fi and type the code. They can send you files, and download what is in “To send”.",
-            "افتح العنوان على نفس شبكة الواي فاي واكتب الرمز. يمكنهم إرسال ملفات إليك وتنزيل ما في «للإرسال»."), 13f, C.SUB))
+        web.addView(label(t("Open the address on the same Wi-Fi and type the code: browse, view, download, upload, rename and delete — like PlainApp. The code changes every time Sahl Share starts.",
+            "افتح العنوان على نفس شبكة الواي فاي واكتب الرمز: تصفّح وعرض وتنزيل ورفع وإعادة تسمية وحذف — مثل PlainApp. يتغيّر الرمز في كل مرة يبدأ فيها سهل للمشاركة."), 13f, C.SUB))
+        web.addView(toggle(t("Let the browser see all my files (off = Received folder only)", "السماح للمتصفح برؤية كل ملفاتي (عند الإيقاف: مجلد المستلمة فقط)"), "webfull"))
         col.addView(web, lp().margins(this, b = 12))
 
         col.addView(button(t("📂  Open received files", "📂  فتح الملفات المستلمة"), false) {
@@ -266,16 +267,32 @@ class ShareActivity : Activity(), Lan.Events {
         }
     }
 
-    override fun received(f: File) {}
+    @Volatile private var lastFile: File? = null
+    override fun received(f: File) { lastFile = f }
 
+    private var doneDialog: AlertDialog? = null
     override fun finished(count: Int, from: String) {
         recvDialog?.first?.dismiss(); recvDialog = null
-        dialog().setTitle(t("Received $count files ✓", "تم استلام $count ملف ✓"))
+        doneDialog?.dismiss()
+        doneDialog = dialog().setTitle(t("Received $count files ✓", "تم استلام $count ملف ✓"))
             .setMessage(t("From $from · saved in Download/Sahl Files", "من $from · محفوظة في التنزيلات/Sahl Files"))
-            .setPositiveButton(t("Open", "فتح")) { _, _ ->
-                startActivity(Intent(this, MainActivity::class.java).putExtra("path", Fs.received.absolutePath).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            .setPositiveButton(if (count == 1) t("Open", "فتح") else t("Show files", "عرض الملفات")) { _, _ ->
+                val f = lastFile
+                if (count == 1 && f != null && f.exists()) {
+                    when {
+                        Zip.isZip(f) || ViewerActivity.kind(f) == null -> Fs.open(this, f)
+                        else -> startActivity(Intent(this, ViewerActivity::class.java).putExtra("path", f.absolutePath))
+                    }
+                } else showInFolder(f)
             }
+            .setNeutralButton(if (count == 1) t("Show in folder", "عرض في المجلد") else null) { _, _ -> showInFolder(lastFile) }
             .setNegativeButton(t("Close", "إغلاق"), null).show()
+    }
+
+    private fun showInFolder(f: File?) {
+        val dir = f?.parentFile?.takeIf { it.exists() } ?: Fs.received
+        startActivity(Intent(this, MainActivity::class.java).putExtra("path", dir.absolutePath).putExtra("select", f?.absolutePath)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
     }
 
     override fun message(from: String, text: String) {

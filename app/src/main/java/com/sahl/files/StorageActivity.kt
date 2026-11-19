@@ -22,7 +22,10 @@ class StorageActivity : Activity() {
 
     private class Cat(val id: String, val icon: String, val en: String, val ar: String, val color: Int) {
         var size = 0L; var count = 0
-        val files = ArrayList<File>()
+        // the 300 biggest files, kept while scanning (smallest on top, so it is cheap to replace)
+        val top = java.util.PriorityQueue<Pair<Long, File>>(301, compareBy<Pair<Long, File>> { it.first })
+        fun offer(f: File, size: Long) { if (top.size < 300) top.add(size to f) else if (size > top.peek()!!.first) { top.poll(); top.add(size to f) } }
+        fun biggest() = top.sortedByDescending { it.first }.map { it.second }
     }
 
     private val cats = listOf(
@@ -78,17 +81,18 @@ class StorageActivity : Activity() {
                 if (k.isDirectory) {
                     val p = k.absolutePath
                     if (p == "${r.absolutePath}/Android/data" || p == "${r.absolutePath}/Android/obb") continue
+                    if (java.nio.file.Files.isSymbolicLink(k.toPath())) continue
                     walk(k, topDir ?: k)
                 } else {
                     val s = k.length(); val c = catOf(k, wa)
-                    c.size += s; c.count++; c.files.add(k)
+                    c.size += s; c.count++; c.offer(k, s)
                     if (topDir != null) top[topDir] = (top[topDir] ?: 0L) + s
                     if (++n % 2000 == 0) main.post { status.text = t("Measuring… $n files", "جارٍ القياس… $n ملف") }
                 }
             }
         }
-        walk(r, null)
-        cats.forEach { c -> c.files.sortByDescending { it.length() }; if (c.files.size > 300) { val keep = c.files.take(300); c.files.clear(); c.files.addAll(keep) } }
+        try { walk(r, null) } catch (e: Throwable) { }
+        main.post { status.text = t("Almost done…", "على وشك الانتهاء…") }
         val st = StatFs(r.absolutePath)
         val used = st.totalBytes - st.availableBytes
         val counted = cats.sumOf { it.size }
@@ -119,7 +123,7 @@ class StorageActivity : Activity() {
         col.addView(label(t("By type", "حسب النوع"), 16f, C.TEXT, true).apply { setPadding(dp(4), dp(4), 0, dp(6)) })
         for (c in cats.filter { it.size > 0 }.sortedByDescending { it.size })
             col.addView(row(c.icon, if (isAr) c.ar else c.en, t("${c.count} files", "${c.count} ملف"), c.size, used, c.color) {
-                MainActivity.virtual = (if (isAr) c.ar else c.en) to c.files.toList()
+                MainActivity.virtual = (if (isAr) c.ar else c.en) + t(" · biggest 300", " · أكبر 300") to c.biggest()
                 startActivity(Intent(this, MainActivity::class.java).putExtra("virtual", true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
             }, lp().margins(this, b = 8))
         col.addView(row("⚙", t("System & apps", "النظام والتطبيقات"), t("Android, apps and their data", "أندرويد والتطبيقات وبياناتها"), system, used, 0xFF3D4A45.toInt(), null), lp().margins(this, b = 14))

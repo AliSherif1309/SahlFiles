@@ -342,6 +342,15 @@ object Lan {
                     r.path == "/web/list" -> webList(r, out)
                     r.path == "/web/dl" -> webDownload(r, out)
                     r.path == "/web/up" -> webUpload(r, out)
+                    r.path == "/fs/info" -> fsInfo(r, out)
+                    r.path == "/fs/ls" -> fsList(r, out)
+                    r.path == "/fs/get" -> fsGet(r, out)
+                    r.path == "/fs/thumb" -> fsThumb(r, out)
+                    r.path == "/fs/zip" -> fsZip(r, out)
+                    r.path == "/fs/put" -> fsPut(r, out)
+                    r.path == "/fs/mkdir" -> fsOp(r, out) { d, _ -> File(d, Fs.cleanName(r.q["n"] ?: "")).let { it.exists() || it.mkdirs() } }
+                    r.path == "/fs/rename" -> fsOp(r, out) { f, _ -> val to = File(f.parentFile, Fs.cleanName(r.q["n"] ?: "")); !to.exists() && f.renameTo(to) }
+                    r.path == "/fs/delete" -> fsOp(r, out) { f, base -> f.absolutePath != base.absolutePath && Trash.put(f) }
                     else -> reply(out, 404)
                 }
             } catch (_: Exception) {
@@ -396,6 +405,98 @@ object Lan {
             target
         } catch (_: Exception) { null }
 
+        fun c() = c
+
+        // ---- browser file manager
+        private fun rel(f: File) = f.absolutePath.removePrefix(base().absolutePath).ifEmpty { "/" }
+
+        private fun fsInfo(r: Req, out: OutputStream) {
+            if (!codeOk(r, out)) return
+            val st = android.os.StatFs(Fs.root.absolutePath)
+            json(out, 200, JSONObject().put("device", alias(c)).put("full", webFull(c))
+                .put("free", st.availableBytes).put("total", st.totalBytes))
+        }
+
+        private fun fsList(r: Req, out: OutputStream) {
+            if (!codeOk(r, out)) return
+            val d = resolve(r.q["p"])?.takeIf { it.isDirectory } ?: run { reply(out, 404); return }
+            val hidden = r.q["h"] == "1"
+            val a = org.json.JSONArray()
+            (d.listFiles() ?: emptyArray()).filter { hidden || !it.name.startsWith(".") }
+                .sortedWith(compareBy<File> { !it.isDirectory }.thenBy { it.name.lowercase() })
+                .forEach { f -> a.put(JSONObject().put("n", f.name).put("d", f.isDirectory).put("s", if (f.isFile) f.length() else (f.list()?.size ?: 0)).put("m", f.lastModified())) }
+            json(out, 200, JSONObject().put("path", rel(d)).put("items", a))
+        }
+
+        private fun fsGet(r: Req, out: OutputStream) {
+            if (!codeOk(r, out)) return
+            val f = resolve(r.q["p"])?.takeIf { it.isFile } ?: run { reply(out, 404); return }
+            val len = f.length(); var start = 0L; var end = len - 1
+            val range = r.headers["range"]
+            if (range != null && range.startsWith("bytes=")) {
+                val (a, b) = range.removePrefix("bytes=").substringBefore(',').split('-').let { it[0] to it.getOrElse(1) { "" } }
+                if (a.isEmpty()) { start = (len - (b.toLongOrNull() ?: 0)).coerceAtLeast(0) } else { start = a.toLongOrNull() ?: 0; if (b.isNotEmpty()) end = minOf(b.toLong(), len - 1) }
+            }
+            val partial = range != null && start <= end
+            val name = java.net.URLEncoder.encode(f.name, "UTF-8").replace("+", "%20")
+            val disp = if (r.q["dl"] == "1") "attachment" else "inline"
+            out.write(("HTTP/1.1 ${if (partial) "206 Partial Content" else "200 OK"}\r\nContent-Type: ${Fs.mime(f)}\r\n" +
+                "Content-Length: ${if (len == 0L) 0 else end - start + 1}\r\nAccept-Ranges: bytes\r\n" +
+                (if (partial) "Content-Range: bytes $start-$end/$len\r\n" else "") +
+                "Content-Disposition: $disp; filename*=UTF-8''$name\r\nConnection: close\r\n\r\n").toByteArray())
+            if (len > 0) java.io.RandomAccessFile(f, "r").use { raf ->
+                raf.seek(start); var left = end - start + 1; val buf = ByteArray(256 * 1024)
+                while (left > 0) { val n = raf.read(buf, 0, minOf(buf.size.toLong(), left).toInt()); if (n < 0) break; out.write(buf, 0, n); left -= n }
+            }
+            out.flush()
+        }
+
+        private fun fsThumb(r: Req, out: OutputStream) {
+            if (!codeOk(r, out)) return
+            val f = resolve(r.q["p"])?.takeIf { it.isFile } ?: run { reply(out, 404); return }
+            val bmp = try {
+                if (Fs.isVideo(f)) android.media.ThumbnailUtils.createVideoThumbnail(f, android.util.Size(240, 240), null)
+                else android.media.ThumbnailUtils.createImageThumbnail(f, android.util.Size(240, 240), null)
+            } catch (_: Exception) { null } ?: run { reply(out, 404); return }
+            val bo = java.io.ByteArrayOutputStream(); bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, bo)
+            reply(out, 200, "image/jpeg", bo.toByteArray())
+        }
+
+        /** A folder as a zip, made on the fly. */
+        private fun fsZip(r: Req, out: OutputStream) {
+            if (!codeOk(r, out)) return
+            val d = resolve(r.q["p"])?.takeIf { it.isDirectory } ?: run { reply(out, 404); return }
+            val name = java.net.URLEncoder.encode((if (d.name.isEmpty()) "files" else d.name) + ".zip", "UTF-8").replace("+", "%20")
+            out.write(("HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\nContent-Disposition: attachment; filename*=UTF-8''$name\r\nConnection: close\r\n\r\n").toByteArray())
+            java.util.zip.ZipOutputStream(java.io.BufferedOutputStream(out, 256 * 1024), Charsets.UTF_8).use { z ->
+                val baseLen = d.absolutePath.length + 1; val buf = ByteArray(256 * 1024)
+                d.walkTopDown().filter { it.isFile }.forEach { f ->
+                    z.putNextEntry(java.util.zip.ZipEntry(f.absolutePath.substring(baseLen)).apply { time = f.lastModified() })
+                    f.inputStream().use { i -> while (true) { val n = i.read(buf); if (n < 0) break; z.write(buf, 0, n) } }
+                    z.closeEntry()
+                }
+            }
+        }
+
+        private fun fsPut(r: Req, out: OutputStream) {
+            if (!codeOk(r, out)) return
+            val d = resolve(r.q["p"])?.takeIf { it.isDirectory } ?: run { reply(out, 404); return }
+            val name = Fs.cleanName(r.q["n"] ?: "file"); val size = r.headers["content-length"]?.toLongOrNull() ?: 0L
+            val target = Fs.freeName(d, name); var done = 0L
+            try {
+                target.outputStream().use { o -> val buf = ByteArray(256 * 1024)
+                    while (true) { val n = r.body.read(buf); if (n < 0) break; o.write(buf, 0, n); done += n; ev.progress(name, done, size) } }
+            } catch (e: Exception) { target.delete(); reply(out, 500); return }
+            ev.received(target); ev.finished(1, t("Browser", "المتصفح"))
+            reply(out, 200, "text/plain", "ok".toByteArray())
+        }
+
+        private fun fsOp(r: Req, out: OutputStream, op: (File, File) -> Boolean) {
+            if (!codeOk(r, out)) return
+            val f = resolve(r.q["p"]) ?: run { reply(out, 404); return }
+            reply(out, if (try { op(f, base()) } catch (_: Exception) { false }) 200 else 409)
+        }
+
         // ---- browser page
         private fun codeOk(r: Req, out: OutputStream): Boolean {
             if (wrongCodes >= 10) { reply(out, 429); return false }
@@ -426,6 +527,19 @@ object Lan {
             ev.received(f); ev.finished(1, t("Browser", "المتصفح"))
             reply(out, 200, "text/plain", "ok".toByteArray())
         }
+    }
+
+    // ---------------------------------------------------------------- browser file manager (like PlainApp)
+
+    /** Whole phone, or only the "Received" folder (default, safer). */
+    private fun Server.base(): File = if (webFull(c())) Fs.root else Fs.received.apply { mkdirs() }
+    fun webFull(c: Context) = c.getSharedPreferences("share", 0).getBoolean("webfull", false)
+
+    private fun Server.resolve(p: String?): File? {
+        val base = base(); val bc = base.canonicalPath
+        val f = File(base, (p ?: "").trimStart('/'))
+        val cp = f.canonicalPath
+        return if (cp == bc || cp.startsWith("$bc/")) f else null       // never outside the shared area
     }
 
     private class Limited(i: InputStream, private var left: Long) : FilterInputStream(i) {
