@@ -8,7 +8,7 @@ A calm, fast file manager for Android phones, from the Sahl apps family.
 - **Favourites and recent files**, **folder sizes**, and a **storage map** of what fills the phone.
 - **Built-in viewers**: pictures (zoom, next/previous), text and code, web pages (HTML), PDF, video and music — with “Open with…” always available.
 - **Recycle bin**: deleted items wait 30 days and can be restored.
-- **Cleaner**: duplicate files, large files, leftover APKs, old downloads, empty folders.
+- **Cleaner (Pro)**: app caches (with Shizuku), leftovers of uninstalled apps, junk files, your own rules, duplicates, large files, APKs, old downloads, empty folders, exclusions and scheduled auto-clean.
 - **Private Vault**: AES-256 encrypted files, unlocked with fingerprint or PIN, hidden from the gallery, no screenshots.
 - **Sahl Share**: send and receive over Wi-Fi. Works with the **LocalSend** app on Windows, Mac, Linux, iPhone and Android, and with any browser (address + 6-digit code).
 - **In-app updates** from GitHub Releases.

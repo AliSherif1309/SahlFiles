@@ -38,4 +38,6 @@ android {
 dependencies {
     implementation("androidx.core:core:1.12.0")   // FileProvider
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")   // pull to refresh
+    implementation("dev.rikka.shizuku:api:13.1.5")        // Shizuku: clear app caches, reach Android/data (no root)
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }
