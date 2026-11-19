@@ -4,6 +4,8 @@ A calm, fast file manager for Android phones, from the Sahl apps family.
 
 ## Features
 - **Files**: browse, search, sort, copy, move, rename, share, folder and photo/video thumbnails, USB/SD cards, quick places (Download, Camera, WhatsApp…).
+- **Zip / unzip**: look inside zips, extract all or chosen files (Arabic names supported), compress a selection.
+- **Favourites and recent files**, **folder sizes**, and a **storage map** of what fills the phone.
 - **Recycle bin**: deleted items wait 30 days and can be restored.
 - **Cleaner**: duplicate files, large files, leftover APKs, old downloads, empty folders.
 - **Private Vault**: AES-256 encrypted files, unlocked with fingerprint or PIN, hidden from the gallery, no screenshots.

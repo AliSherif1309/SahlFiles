@@ -66,6 +66,14 @@ class MainActivity : Activity() {
     private var sort: Int
         get() = prefs.getInt("sort", 0)              // 0 name, 1 newest, 2 largest, 3 type
         set(v) { prefs.edit().putInt("sort", v).apply() }
+    private var showSizes: Boolean
+        get() = prefs.getBoolean("sizes", false)
+        set(v) { prefs.edit().putBoolean("sizes", v).apply() }
+    private val dirSizes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    @Volatile private var sizeJob = 0
+    private var favs: Set<String>
+        get() = prefs.getStringSet("favs", emptySet())!!.toSet()
+        set(v) { prefs.edit().putStringSet("favs", v).apply() }
     private var showHidden: Boolean
         get() = prefs.getBoolean("hidden", false)
         set(v) { prefs.edit().putBoolean("hidden", v).apply() }
@@ -85,7 +93,9 @@ class MainActivity : Activity() {
         super.onResume()
         if (!Fs.hasAccess()) { built = false; showPermission(); return }
         if (!built) { build(); built = true; Thread { Trash.autoClean() }.start() }
-        if (searching == null) load(dir, keep = true)
+        val v = virtual; virtual = null
+        if (v != null) showVirtual("📊 " + v.first, v.second)
+        else if (searching == null) load(dir, keep = true)
         Updater.checkOnStart(this)
     }
 
@@ -121,7 +131,10 @@ class MainActivity : Activity() {
         rootView.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(places) })
         buildPlaces()
 
-        storageTv = label("", 12f, C.SUB).apply { setPadding(dp(18), dp(6), dp(18), 0) }
+        storageTv = label("", 12f, C.SUB).apply {
+            setPadding(dp(18), dp(6), dp(18), 0)
+            setOnClickListener { startActivity(Intent(this@MainActivity, StorageActivity::class.java)) }
+        }
         rootView.addView(storageTv)
         pathTv = label("", 13f, C.GREEN, true).apply {
             setPadding(dp(18), dp(6), dp(18), dp(6)); maxLines = 1; ellipsize = TextUtils.TruncateAt.START
@@ -166,6 +179,8 @@ class MainActivity : Activity() {
         act("✎", t("Rename", "تسمية")) { rename() }
         act("🗑", t("Delete", "حذف")) { delete() }
         act("↗", t("Share", "مشاركة")) { Fs.share(this, sel.toList()) }
+        act("🗜", t("Zip", "ضغط")) { zipSelected() }
+        act("★", t("Favourite", "مفضلة")) { toggleFav() }
         act("📡", t("Send", "إرسال")) { sendWifi() }
         act("🔒", t("Vault", "الخزنة")) { toVault() }
         act("ⓘ", t("Details", "تفاصيل")) { details() }
@@ -218,6 +233,15 @@ class MainActivity : Activity() {
         }
         val r = Fs.root
         add(t("📱 Phone", "📱 الهاتف"), r)
+        places.addView(chip(t("🕘 Recent", "🕘 الأخيرة")) { showRecent() }, lp(WRAP_CONTENT).margins(this, r = 8))
+        for (p in favs.sorted()) {
+            val f = File(p); if (!f.exists()) continue
+            places.addView(chip("★ " + f.name) { if (f.isDirectory) load(f) else openFile(f) }.apply {
+                setOnLongClickListener {
+                    confirm(t("Remove from favourites?", "إزالة من المفضلة؟"), f.name, t("Remove", "إزالة")) { favs = favs - p; buildPlaces() }; true
+                }
+            }, lp(WRAP_CONTENT).margins(this, r = 8))
+        }
         add(t("⬇ Download", "⬇ التنزيلات"), File(r, Environment.DIRECTORY_DOWNLOADS))
         add(t("📷 Camera", "📷 الكاميرا"), File(r, "DCIM/Camera"))
         add(t("🖼 Pictures", "🖼 الصور"), File(r, Environment.DIRECTORY_PICTURES))
@@ -238,7 +262,7 @@ class MainActivity : Activity() {
         val byName = compareBy<File, String>(String.CASE_INSENSITIVE_ORDER) { it.name }
         val c: Comparator<File> = when (sort) {
             1 -> compareByDescending<File> { it.lastModified() }
-            2 -> compareByDescending<File> { if (it.isFile) it.length() else 0L }.then(byName)
+            2 -> compareByDescending<File> { if (it.isFile) it.length() else dirSizes[it.absolutePath] ?: 0L }.then(byName)
             3 -> compareBy<File> { it.extension.lowercase() }.then(byName)
             else -> byName
         }
@@ -264,6 +288,123 @@ class MainActivity : Activity() {
                 refreshBars()
                 val pos = select?.let { p -> items.indexOfFirst { it.absolutePath == p } }?.takeIf { it >= 0 } ?: positions[target.absolutePath] ?: 0
                 if (items.isNotEmpty()) list.setSelection(pos.coerceIn(0, items.size - 1))
+                measureFolders()
+            }
+        }.start()
+    }
+
+    /** Folder sizes: measured in the background, one folder at a time, and remembered. */
+    private fun measureFolders() {
+        if (!showSizes) return
+        val job = ++sizeJob
+        val dirs = items.filter { it.isDirectory && !dirSizes.containsKey(it.absolutePath) }
+        if (dirs.isEmpty()) return
+        Thread {
+            for (d in dirs) {
+                if (job != sizeJob) return@Thread
+                dirSizes[d.absolutePath] = Fs.sizeOf(d)
+                main.post { if (job == sizeJob) adapter.notifyDataSetChanged() }
+            }
+            main.post { if (job == sizeJob && sort == 2 && searching == null) { items = sorted(items); adapter.notifyDataSetChanged() } }
+        }.start()
+    }
+
+    private fun showVirtual(title: String, files: List<File>) {
+        sizeJob++
+        searching = title; items = files; sel.clear()
+        adapter.notifyDataSetChanged(); refreshBars()
+        pathTv.text = title
+        empty.text = t("Nothing here", "لا يوجد شيء"); empty.gone(items.isNotEmpty())
+        if (items.isNotEmpty()) list.setSelection(0)
+    }
+
+    private fun showRecent() {
+        val l = (prefs.getString("recent", "") ?: "").split('\n').filter { it.isNotEmpty() }.map { File(it) }.filter { it.exists() }
+        showVirtual(t("🕘 Recent files", "🕘 الملفات الأخيرة"), l)
+    }
+
+    private fun openFile(f: File) {
+        val old = (prefs.getString("recent", "") ?: "").split('\n').filter { it.isNotEmpty() && it != f.absolutePath }
+        prefs.edit().putString("recent", (listOf(f.absolutePath) + old).take(40).joinToString("\n")).apply()
+        if (Zip.isZip(f)) zipMenu(f) else Fs.open(this, f)
+    }
+
+    private fun toggleFav() {
+        val ps = sel.map { it.absolutePath }.toSet()
+        val cur = favs
+        favs = if (ps.all { it in cur }) cur - ps else cur + ps
+        toast(if (ps.all { it in favs }) t("Added to favourites ★", "أُضيفت إلى المفضلة ★") else t("Removed from favourites", "أُزيلت من المفضلة"))
+        sel.clear(); refreshBars(); adapter.notifyDataSetChanged(); buildPlaces()
+    }
+
+    // ------------------------------------------------------------------ zip
+
+    private fun zipSelected() {
+        val src = sel.toList()
+        val base = if (src.size == 1) src[0].nameWithoutExtension.ifEmpty { src[0].name } else t("Archive", "ملفات")
+        ask(t("Zip file name", "اسم الملف المضغوط"), base) { n ->
+            val target = Fs.freeName(dir, Fs.cleanName(n).removeSuffix(".zip") + ".zip")
+            val total = src.sumOf { Fs.sizeOf(it) }.coerceAtLeast(1)
+            val (d, set) = progress(t("Compressing", "جارٍ الضغط"))
+            Thread {
+                val ok = try { Zip.create(src, target) { name, done -> set("$name · ${done.human()} / ${total.human()}", (done * 100 / total).toInt()) }; true }
+                         catch (e: Exception) { target.delete(); false }
+                main.post {
+                    d.dismiss()
+                    toast(if (ok) t("Created ${target.name} · ${target.length().human()}", "تم إنشاء ${target.name} · ${target.length().human()}") else t("Could not create the zip", "تعذّر إنشاء الملف المضغوط"))
+                    load(dir, select = target.absolutePath)
+                }
+            }.start()
+        }
+    }
+
+    private fun zipMenu(f: File) {
+        val (d, _) = progress(t("Reading", "جارٍ القراءة"))
+        Thread {
+            val entries = try { Zip.list(f) } catch (e: Exception) { null }
+            main.post {
+                d.dismiss()
+                if (entries == null) {
+                    dialog().setTitle(f.name).setMessage(t("This zip is damaged or uses a format Sahl Files can't read (password or RAR/7z).", "هذا الملف تالف أو بصيغة لا يقرؤها سهل للملفات (كلمة مرور أو RAR/7z)."))
+                        .setPositiveButton(t("Open with…", "فتح بواسطة…")) { _, _ -> Fs.open(this, f) }.setNegativeButton(t("Close", "إغلاق"), null).show()
+                    return@post
+                }
+                val files = entries.filter { !it.dir }
+                val total = files.sumOf { it.size.coerceAtLeast(0) }
+                val preview = files.take(12).joinToString("\n") { "• ${it.name}" } + if (files.size > 12) "\n…" else ""
+                val folder = File(f.parentFile, f.nameWithoutExtension)
+                dialog().setTitle("🗜 ${f.name}")
+                    .setMessage(t("${files.size} files · ${total.human()} when extracted\n\n", "${files.size} ملف · ${total.human()} بعد الفك\n\n") + preview)
+                    .setPositiveButton(t("Extract all", "فك الكل")) { _, _ -> unzip(f, Fs.freeName(f.parentFile!!, folder.name), null, total) }
+                    .setNeutralButton(t("Choose files", "اختيار ملفات")) { _, _ -> pickFromZip(f, files, folder) }
+                    .setNegativeButton(t("Open with…", "فتح بواسطة…")) { _, _ -> Fs.open(this, f) }
+                    .show()
+            }
+        }.start()
+    }
+
+    private fun pickFromZip(f: File, files: List<Zip.Entry>, folder: File) {
+        val shown = files.take(500)
+        val checked = BooleanArray(shown.size)
+        dialog().setTitle(t("Choose files to extract", "اختر الملفات لفكّها"))
+            .setMultiChoiceItems(shown.map { "${it.name}  (${it.size.coerceAtLeast(0).human()})" }.toTypedArray(), checked) { _, i, on -> checked[i] = on }
+            .setPositiveButton(t("Extract", "فك")) { _, _ ->
+                val only = shown.filterIndexed { i, _ -> checked[i] }
+                if (only.isEmpty()) toast(t("Nothing chosen", "لم يتم اختيار شيء"))
+                else unzip(f, Fs.freeName(f.parentFile!!, folder.name), only.map { it.name }.toSet(), only.sumOf { it.size.coerceAtLeast(0) })
+            }
+            .setNegativeButton(t("Cancel", "إلغاء"), null).show()
+    }
+
+    private fun unzip(f: File, dest: File, only: Set<String>?, total: Long) {
+        val (d, set) = progress(t("Extracting", "جارٍ الفك"))
+        val tot = total.coerceAtLeast(1)
+        Thread {
+            val n = try { Zip.extract(f, dest, only) { name, done -> set("$name · ${done.human()}", (done * 100 / tot).toInt().coerceAtMost(100)) } } catch (e: Exception) { -1 }
+            main.post {
+                d.dismiss()
+                if (n < 0) toast(t("Could not extract — the zip may be damaged", "تعذّر الفك — قد يكون الملف تالفًا"))
+                else { toast(t("Extracted $n files ✓", "تم فك $n ملف ✓")); load(dest) }
             }
         }.start()
     }
@@ -277,7 +418,7 @@ class MainActivity : Activity() {
 
     private fun tap(f: File) {
         if (sel.isNotEmpty()) { toggle(f); return }
-        if (f.isDirectory) load(f) else Fs.open(this, f)
+        if (f.isDirectory) load(f) else openFile(f)
     }
 
     private fun toggle(f: File) {
@@ -408,10 +549,7 @@ class MainActivity : Activity() {
             }
             main.post {
                 d.dismiss()
-                searching = q; items = sorted(res); sel.clear()
-                adapter.notifyDataSetChanged(); refreshBars()
-                pathTv.text = t("🔍 “$q” · ${res.size} results", "🔍 «$q» · ${res.size} نتيجة")
-                empty.text = t("Nothing found", "لا توجد نتائج"); empty.gone(items.isNotEmpty())
+                showVirtual(t("🔍 “$q” · ${res.size} results", "🔍 «$q» · ${res.size} نتيجة"), sorted(res))
             }
         }.start()
     }
@@ -421,14 +559,18 @@ class MainActivity : Activity() {
         val opts = arrayOf(
             t("Sort: ", "الترتيب: ") + sorts[sort],
             if (showHidden) t("Hide hidden files", "إخفاء الملفات المخفية") else t("Show hidden files", "إظهار الملفات المخفية"),
+            t("📊 Storage map", "📊 خريطة المساحة"),
+            if (showSizes) t("Hide folder sizes", "إخفاء أحجام المجلدات") else t("Show folder sizes", "إظهار أحجام المجلدات"),
             t("Check for updates", "البحث عن تحديث"),
             t("About", "حول التطبيق"))
         dialog().setItems(opts) { _, w ->
             when (w) {
                 0 -> dialog().setTitle(t("Sort by", "ترتيب حسب")).setSingleChoiceItems(sorts, sort) { dd, s -> sort = s; dd.dismiss(); load(dir, keep = true) }.show()
                 1 -> { showHidden = !showHidden; load(dir, keep = true) }
-                2 -> Updater.checkNow(this)
-                3 -> dialog().setTitle(t("Sahl Files", "سهل للملفات"))
+                2 -> startActivity(Intent(this, StorageActivity::class.java))
+                3 -> { showSizes = !showSizes; if (!showSizes) dirSizes.clear(); load(dir, keep = true) }
+                4 -> Updater.checkNow(this)
+                5 -> dialog().setTitle(t("Sahl Files", "سهل للملفات"))
                     .setMessage("v${BuildConfig.VERSION_NAME}\n\n" + t("File manager, cleaner, private vault and Wi-Fi sharing (works with LocalSend).\nPart of the Sahl apps family.",
                         "مدير ملفات ومنظّف وخزنة خاصة ومشاركة عبر الواي فاي (يعمل مع LocalSend).\nمن عائلة تطبيقات سهل."))
                     .setPositiveButton(t("OK", "موافق"), null).show()
@@ -469,6 +611,8 @@ class MainActivity : Activity() {
 
     private inner class Adapter : BaseAdapter() {
         private val df = DateFormat.getDateInstance(DateFormat.MEDIUM)
+        var favSet: Set<String> = emptySet()
+        override fun notifyDataSetChanged() { favSet = favs; super.notifyDataSetChanged() }
         override fun getCount() = items.size
         override fun getItem(p: Int) = items[p]
         override fun getItemId(p: Int) = p.toLong()
@@ -493,10 +637,11 @@ class MainActivity : Activity() {
             }
             val f = items[p]
             val ic = row.findViewWithTag<TextView>("ic"); val img = row.findViewWithTag<ImageView>("img")
-            row.findViewWithTag<TextView>("name").text = f.name
+            row.findViewWithTag<TextView>("name").text = if (f.absolutePath in favSet) "★ " + f.name else f.name
             row.findViewWithTag<TextView>("sub").text = when {
                 searching != null -> f.parent?.removePrefix(Fs.root.absolutePath)?.ifEmpty { "/" } ?: ""
-                f.isDirectory -> t("${f.list()?.size ?: 0} items", "${f.list()?.size ?: 0} عنصر") + " · " + df.format(Date(f.lastModified()))
+                f.isDirectory -> t("${f.list()?.size ?: 0} items", "${f.list()?.size ?: 0} عنصر") +
+                    (if (showSizes) " · " + (dirSizes[f.absolutePath]?.human() ?: "…") else "") + " · " + df.format(Date(f.lastModified()))
                 else -> f.length().human() + " · " + df.format(Date(f.lastModified()))
             }
             val on = f in sel
@@ -522,4 +667,9 @@ class MainActivity : Activity() {
         }
     }
 
+
+    companion object {
+        /** A ready list of files to show (from the Storage map). */
+        @Volatile var virtual: Pair<String, List<File>>? = null
+    }
 }

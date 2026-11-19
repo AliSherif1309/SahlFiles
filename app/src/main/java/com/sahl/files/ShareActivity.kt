@@ -143,7 +143,7 @@ class ShareActivity : Activity(), Lan.Events {
         col.addView(web, lp().margins(this, b = 12))
 
         col.addView(button(t("📂  Open received files", "📂  فتح الملفات المستلمة"), false) {
-            startActivity(Intent(this, MainActivity::class.java).putExtra("path", Fs.received.apply { mkdirs() }.absolutePath).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP))
+            startActivity(Intent(this, MainActivity::class.java).putExtra("path", Fs.received.apply { mkdirs() }.absolutePath).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
         })
         col.addView(label(t("Works with the LocalSend app on Windows, Mac, Linux, iPhone and Android. Same Wi-Fi only; nothing goes through the internet.",
             "يعمل مع تطبيق LocalSend على ويندوز وماك ولينكس وآيفون وأندرويد. على نفس الواي فاي فقط؛ لا يمر شيء عبر الإنترنت."), 12f, C.SUB)
@@ -273,7 +273,7 @@ class ShareActivity : Activity(), Lan.Events {
         dialog().setTitle(t("Received $count files ✓", "تم استلام $count ملف ✓"))
             .setMessage(t("From $from · saved in Download/Sahl Files", "من $from · محفوظة في التنزيلات/Sahl Files"))
             .setPositiveButton(t("Open", "فتح")) { _, _ ->
-                startActivity(Intent(this, MainActivity::class.java).putExtra("path", Fs.received.absolutePath).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP))
+                startActivity(Intent(this, MainActivity::class.java).putExtra("path", Fs.received.absolutePath).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
             }
             .setNegativeButton(t("Close", "إغلاق"), null).show()
     }
