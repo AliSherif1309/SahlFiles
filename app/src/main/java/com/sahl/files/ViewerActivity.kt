@@ -125,7 +125,7 @@ class ViewerActivity : Activity() {
                 val tr = s.trim(); if (tr.startsWith("[")) JSONArray(tr).toString(2) else JSONObject(tr).toString(2)
             } catch (_: Exception) { s }
             val cut = f.length() > limit
-            main.post { if (!isFinishing) drawText(s, cut) }
+            main.post { if (!isFinishing) { if (intent.getBooleanExtra("edit", false) && !cut) { intent.removeExtra("edit"); editText(s) } else drawText(s, cut) } }
         }.start()
     }
 
@@ -153,12 +153,50 @@ class ViewerActivity : Activity() {
         val scroll = ScrollView(this)
         if (wrap) scroll.addView(col) else scroll.addView(HorizontalScrollView(this).apply { addView(col) })
         body.addView(scroll)
+        // edit (files up to 2 MB)
+        if (!cut) body.addView(TextView(this).apply {
+            text = t("✎ Edit", "✎ تعديل"); textSize = 13f; setTextColor(Color.WHITE)
+            setPadding(dp(16), dp(9), dp(16), dp(9)); background = round(C.GREEN, 18)
+            setOnClickListener { editText(s) }
+        }, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.START).apply { setMargins(dp(16), dp(16), dp(16), dp(16)) })
         // wrap toggle for code / logs
         if (code) body.addView(TextView(this).apply {
             text = if (wrap) t("No wrap", "بدون التفاف") else t("Wrap", "التفاف"); textSize = 12f; setTextColor(Color.WHITE)
             setPadding(dp(14), dp(8), dp(14), dp(8)); background = round(C.GREEN, 18)
             setOnClickListener { wrap = !wrap; drawText(s, cut) }
         }, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.END).apply { setMargins(dp(16), dp(16), dp(16), dp(16)) })
+    }
+
+    private fun editText(original: String) {
+        body.removeAllViews()
+        val code = file.extension.lowercase() !in setOf("txt", "md", "markdown", "srt", "vtt", "nfo", "")
+        val ed = android.widget.EditText(this).apply {
+            setText(original); textSize = if (code) 13f else 16f; setTextColor(C.TEXT)
+            typeface = if (code) Typeface.MONOSPACE else Typeface.DEFAULT
+            gravity = Gravity.TOP or Gravity.START; background = null
+            setPadding(dp(16), dp(12), dp(16), dp(80))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            textDirection = View.TEXT_DIRECTION_FIRST_STRONG
+            requestFocus()
+        }
+        body.addView(ed, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(button(t("Cancel", "إلغاء"), false) {
+                if (ed.text.toString() == original) drawText(original, false)
+                else confirm(t("Discard changes?", "تجاهل التعديلات؟"), "", t("Discard", "تجاهل")) { drawText(original, false) }
+            }, lp(WRAP_CONTENT).margins(this@ViewerActivity, r = 10))
+            addView(button(t("Save", "حفظ")) {
+                val txt = ed.text.toString()
+                try {
+                    val tmp = File(file.parentFile, "." + file.name + ".saving")
+                    tmp.writeText(txt, Charsets.UTF_8)
+                    if (!tmp.renameTo(file)) { file.writeText(txt, Charsets.UTF_8); tmp.delete() }
+                    toast(t("Saved ✓", "تم الحفظ ✓")); drawText(txt, false)
+                } catch (e: Exception) { toast(t("Could not save here", "تعذّر الحفظ هنا")) }
+            })
+        }
+        body.addView(bar, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.END).apply { setMargins(dp(16), dp(16), dp(16), dp(16)) })
     }
 
     // ---------------------------------------------------------------- web pages & pictures (WebView gives smooth pinch-zoom)

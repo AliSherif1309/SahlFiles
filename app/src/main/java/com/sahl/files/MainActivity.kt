@@ -53,6 +53,7 @@ class MainActivity : Activity() {
     private lateinit var pasteBar: LinearLayout
     private lateinit var pasteTv: TextView
     private lateinit var places: LinearLayout
+    private lateinit var swipe: androidx.swiperefreshlayout.widget.SwipeRefreshLayout
     private val adapter = Adapter()
 
     private var dir: File = Fs.root
@@ -135,7 +136,7 @@ class MainActivity : Activity() {
     private fun build() {
         val rootView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(C.BG) }
         rootView.addView(topBar(t("Sahl Files", "سهل للملفات"), false,
-            "🔍" to { search() }, "⋮" to { menu() }))
+            "↻" to { refresh() }, "🔍" to { search() }, "⋮" to { menu() }))
 
         places = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), 0, dp(12), 0) }
         rootView.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(places) })
@@ -168,10 +169,17 @@ class MainActivity : Activity() {
             setOnItemLongClickListener { _, _, p, _ -> toggle(items[p]); true }
         }
         empty = label("", 15f, C.SUB).apply { gravity = Gravity.CENTER; setPadding(dp(30), dp(60), dp(30), 0) }
-        rootView.addView(FrameLayout(this).apply {
-            addView(list, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-            addView(empty, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-        }, lp(MATCH_PARENT, 0, 1f))
+        swipe = androidx.swiperefreshlayout.widget.SwipeRefreshLayout(this).apply {
+            setColorSchemeColors(C.GREEN, C.GOLD)
+            setProgressBackgroundColorSchemeColor(C.CARD)
+            setOnChildScrollUpCallback { _, _ -> list.canScrollVertically(-1) }   // only pull when the list is at the top
+            setOnRefreshListener { refresh() }
+            addView(FrameLayout(this@MainActivity).apply {
+                addView(list, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+                addView(empty, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+            })
+        }
+        rootView.addView(swipe, lp(MATCH_PARENT, 0, 1f))
 
         // selection actions
         selCount = label("", 14f, C.TEXT, true).apply { setPadding(dp(14), 0, dp(10), 0) }
@@ -221,7 +229,7 @@ class MainActivity : Activity() {
             addView(label(name, 11f, C.SUB).apply { gravity = Gravity.CENTER })
             setOnClickListener { run() }
         }, lp(0, WRAP_CONTENT, 1f))
-        navItem("＋", t("Folder", "مجلد")) { newFolder() }
+        navItem("＋", t("New", "جديد")) { addMenu() }
         navItem("🧹", t("Cleaner", "التنظيف")) { startActivity(Intent(this, CleanerActivity::class.java)) }
         navItem("🔒", t("Vault", "الخزنة")) { startActivity(Intent(this, VaultActivity::class.java)) }
         navItem("📡", t("Share", "المشاركة")) { startActivity(Intent(this, ShareActivity::class.java)) }
@@ -310,6 +318,71 @@ class MainActivity : Activity() {
                     else -> list.setSelection(0)
                 }
                 measureFolders()
+                swipe.isRefreshing = false
+            }
+        }.start()
+    }
+
+    /** Reloads what is on screen (pull down, or the ↻ button). */
+    private fun refresh() {
+        val s = searching
+        when {
+            s == null -> { dirSizes.keys.removeAll { it.startsWith(dir.absolutePath) }; buildPlaces(); load(dir, keep = true) }
+            s.startsWith("🕘") -> { showRecent(); swipe.isRefreshing = false }
+            else -> { items = items.filter { it.exists() }; adapter.notifyDataSetChanged(); swipe.isRefreshing = false }
+        }
+    }
+
+    // ------------------------------------------------------------------ ＋ new
+
+    private fun addMenu() {
+        if (searching != null) { toast(t("Open a folder first", "افتح مجلدًا أولًا")); return }
+        dialog().setTitle(t("Add to this folder", "إضافة إلى هذا المجلد")).setItems(arrayOf(
+            t("📁  New folder", "📁  مجلد جديد"),
+            t("📝  New text file", "📝  ملف نصي جديد"),
+            t("📥  Add files from another app…", "📥  إضافة ملفات من تطبيق آخر…"))) { _, w ->
+            when (w) {
+                0 -> newFolder()
+                1 -> newTextFile()
+                2 -> startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+                        .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true), 11)
+            }
+        }.show()
+    }
+
+    private fun newTextFile() = ask(t("File name", "اسم الملف"), t("Note", "ملاحظة")) { n ->
+        val name = Fs.cleanName(n).let { if (it.contains('.')) it else "$it.txt" }
+        val f = File(dir, name)
+        if (f.exists()) { toast(t("That name is taken", "الاسم مستخدم")); return@ask }
+        try { f.writeText("") } catch (e: Exception) { toast(t("Cannot create a file here", "لا يمكن إنشاء ملف هنا")); return@ask }
+        load(dir, keep = true, select = f.absolutePath)
+        startActivity(Intent(this, ViewerActivity::class.java).putExtra("path", f.absolutePath).putExtra("edit", true))
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(req: Int, res: Int, data: Intent?) {
+        super.onActivityResult(req, res, data)
+        if (req != 11 || res != RESULT_OK || data == null) return
+        val uris = ArrayList<Uri>()
+        data.clipData?.let { c -> for (i in 0 until c.itemCount) uris.add(c.getItemAt(i).uri) } ?: data.data?.let { uris.add(it) }
+        val to = dir
+        val (d, set) = progress(t("Adding files", "جارٍ إضافة الملفات"))
+        Thread {
+            var last: File? = null; var bad = 0
+            uris.forEachIndexed { i, u ->
+                try {
+                    var name = "file"
+                    contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) name = c.getString(0) ?: name }
+                    val target = Fs.freeName(to, Fs.cleanName(name))
+                    set("${i + 1}/${uris.size} · ${target.name}", i * 100 / uris.size)
+                    contentResolver.openInputStream(u)!!.use { inp -> target.outputStream().use { inp.copyTo(it, 256 * 1024) } }
+                    last = target
+                } catch (e: Exception) { bad++ }
+            }
+            main.post {
+                d.dismiss()
+                toast(if (bad > 0) t("$bad files could not be added", "تعذّرت إضافة $bad ملف") else t("Added ${uris.size} files ✓", "تمت إضافة ${uris.size} ملف ✓"))
+                load(to, keep = true, select = last?.absolutePath)
             }
         }.start()
     }

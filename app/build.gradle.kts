@@ -36,5 +36,6 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
-    implementation("androidx.core:core:1.12.0")   // FileProvider only
+    implementation("androidx.core:core:1.12.0")   // FileProvider
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")   // pull to refresh
 }
