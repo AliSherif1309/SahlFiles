@@ -1,0 +1,8 @@
+<resources>
+    <style name="Sahl" parent="android:Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorAccent">#0E6B4E</item>
+        <item name="android:colorPrimary">#0E6B4E</item>
+    </style>
+</resources>
