@@ -347,6 +347,7 @@ object Lan {
                     r.path == "/fs/get" -> fsGet(r, out)
                     r.path == "/fs/thumb" -> fsThumb(r, out)
                     r.path == "/fs/zip" -> fsZip(r, out)
+                    r.path == "/fs/zipsel" -> fsZipSel(r, out)
                     r.path == "/fs/put" -> fsPut(r, out)
                     r.path == "/fs/mkdir" -> fsOp(r, out) { d, _ -> File(d, Fs.cleanName(r.q["n"] ?: "")).let { it.exists() || it.mkdirs() } }
                     r.path == "/fs/rename" -> fsOp(r, out) { f, _ -> val to = File(f.parentFile, Fs.cleanName(r.q["n"] ?: "")); !to.exists() && f.renameTo(to) }
@@ -481,14 +482,39 @@ object Lan {
         private fun fsPut(r: Req, out: OutputStream) {
             if (!codeOk(r, out)) return
             val d = resolve(r.q["p"])?.takeIf { it.isDirectory } ?: run { reply(out, 404); return }
-            val name = Fs.cleanName(r.q["n"] ?: "file"); val size = r.headers["content-length"]?.toLongOrNull() ?: 0L
-            val target = Fs.freeName(d, name); var done = 0L
+            // "n" may carry sub-folders when a whole folder is uploaded ("Trip/Day 1/a.jpg")
+            val parts = (r.q["n"] ?: "file").replace('\\', '/').split('/').filter { it.isNotBlank() && it != "." && it != ".." }.map { Fs.cleanName(it) }
+            var dir = d
+            for (sub in parts.dropLast(1)) { dir = File(dir, sub); if (!dir.exists() && !dir.mkdirs()) { reply(out, 409); return } }
+            if (resolve(rel(dir)) == null) { reply(out, 403); return }
+            val name = parts.lastOrNull() ?: "file"; val size = r.headers["content-length"]?.toLongOrNull() ?: 0L
+            val target = Fs.freeName(dir, name); var done = 0L
             try {
                 target.outputStream().use { o -> val buf = ByteArray(256 * 1024)
                     while (true) { val n = r.body.read(buf); if (n < 0) break; o.write(buf, 0, n); done += n; ev.progress(name, done, size) } }
             } catch (e: Exception) { target.delete(); reply(out, 500); return }
-            ev.received(target); ev.finished(1, t("Browser", "المتصفح"))
+            ev.received(target)
+            if (r.q["last"] == "1") ev.finished(r.q["count"]?.toIntOrNull() ?: 1, t("Browser", "المتصفح"))
             reply(out, 200, "text/plain", "ok".toByteArray())
+        }
+
+        /** Several selected files / folders from one folder, as one zip. */
+        private fun fsZipSel(r: Req, out: OutputStream) {
+            if (!codeOk(r, out)) return
+            val d = resolve(r.q["p"])?.takeIf { it.isDirectory } ?: run { reply(out, 404); return }
+            val names = try { org.json.JSONArray(r.q["names"] ?: "[]").let { a -> (0 until a.length()).map { a.getString(it) } } } catch (_: Exception) { emptyList() }
+            val picked = names.mapNotNull { n -> File(d, n).takeIf { it.exists() && it.parentFile?.absolutePath == d.absolutePath } }
+            if (picked.isEmpty()) { reply(out, 404); return }
+            val zipName = java.net.URLEncoder.encode((if (d.name.isEmpty()) "files" else d.name) + " (${picked.size}).zip", "UTF-8").replace("+", "%20")
+            out.write(("HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\nContent-Disposition: attachment; filename*=UTF-8''$zipName\r\nConnection: close\r\n\r\n").toByteArray())
+            java.util.zip.ZipOutputStream(java.io.BufferedOutputStream(out, 256 * 1024), Charsets.UTF_8).use { z ->
+                val baseLen = d.absolutePath.length + 1; val buf = ByteArray(256 * 1024)
+                picked.forEach { top -> top.walkTopDown().filter { it.isFile }.forEach { f ->
+                    z.putNextEntry(java.util.zip.ZipEntry(f.absolutePath.substring(baseLen)).apply { time = f.lastModified() })
+                    f.inputStream().use { i -> while (true) { val n = i.read(buf); if (n < 0) break; z.write(buf, 0, n) } }
+                    z.closeEntry()
+                } }
+            }
         }
 
         private fun fsOp(r: Req, out: OutputStream, op: (File, File) -> Boolean) {

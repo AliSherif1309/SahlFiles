@@ -30,7 +30,12 @@ table{width:100%;border-collapse:collapse}td{padding:8px 6px;border-bottom:1px s
 tr:hover{background:var(--sel)}td.n{word-break:break-all}td.r{text-align:right;white-space:nowrap;color:var(--s);font-size:13px}
 .ic{width:44px;height:44px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden}
 .ic img{width:100%;height:100%;object-fit:cover}
-.act a{margin-left:10px;cursor:pointer;opacity:.75}.act a:hover{opacity:1}
+.act a{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;margin-left:6px;border-radius:10px;cursor:pointer;font-size:17px;background:var(--bg)}
+.act a:hover{background:var(--g);filter:none}
+td.ck{width:34px}input[type=checkbox]{width:18px;height:18px;accent-color:var(--g);cursor:pointer}
+tr.on{background:var(--sel)}
+#selbar{position:sticky;top:64px;z-index:4;display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--g);color:#fff;border-radius:14px;padding:8px 12px;margin:10px 0}
+#selbar b{margin-right:auto}#selbar button,#selbar a{background:#fff2;color:#fff;border:0}
 .hide{display:none!important}#drop.over{outline:2px dashed var(--gold)}
 .bar{height:5px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:4px}.bar i{display:block;height:100%;width:0;background:var(--g)}
 #view{position:fixed;inset:0;background:#000d;z-index:9;display:flex;align-items:center;justify-content:center}
@@ -52,7 +57,9 @@ tr:hover{background:var(--sel)}td.n{word-break:break-all}td.r{text-align:right;w
   <div class="card" id="drop">
    <div class="crumb" id="crumb"></div>
    <div style="margin-top:8px">
-    <label class="btn">⬆ Upload here · رفع<input id="pick" type="file" multiple class="hide"></label>
+    <button class="btn o" onclick="ls(P)" title="Refresh">↻ Refresh · تحديث</button>
+    <label class="btn">⬆ Upload files · رفع ملفات<input id="pick" type="file" multiple class="hide"></label>
+    <label class="btn">📂 Upload folder · رفع مجلد<input id="pickdir" type="file" webkitdirectory directory multiple class="hide"></label>
     <button class="btn o" onclick="mk()">＋ Folder · مجلد</button>
     <a class="btn o" id="zipdl">🗜 Download folder (zip)</a>
     <label class="s"><input type="checkbox" id="hid" onchange="ls(P)"> hidden files</label>
@@ -60,6 +67,11 @@ tr:hover{background:var(--sel)}td.n{word-break:break-all}td.r{text-align:right;w
    <div id="ups"></div>
    <div class="s" id="note"></div>
   </div>
+  <div id="selbar" class="hide"><b id="selcount"></b>
+   <button onclick="selAll(true)">✓ Select all · الكل</button>
+   <button onclick="dlSel()">⬇ Download (zip) · تنزيل</button>
+   <button onclick="rmSel()">🗑 Delete · حذف</button>
+   <button onclick="selAll(false)">✕</button></div>
   <div class="card"><table id="list"></table></div>
  </div>
 
@@ -70,7 +82,7 @@ tr:hover{background:var(--sel)}td.n{word-break:break-all}td.r{text-align:right;w
 <div id="view" class="hide" onclick="if(event.target===this)closeV()"><span class="x" onclick="closeV()">✕</span><div id="vbox"></div></div>
 </main>
 <script>
-let C=sessionStorage.getItem('c')||'',P='/';
+let C=sessionStorage.getItem('c')||'',P='/',ITEMS=[];const SEL=new Set();
 const ${'$'}=id=>document.getElementById(id);
 const q=(path,extra)=>'?c='+C+'&p='+encodeURIComponent(path)+(extra||'');
 const join=(a,b)=>(a=='/'?'':a)+'/'+b;
@@ -90,15 +102,26 @@ async function go(){C=${'$'}('code').value.trim();const r=await fetch('/fs/info?
  ${'$'}('login').classList.add('hide');${'$'}('app').classList.remove('hide');
  P=decodeURIComponent(location.hash.slice(1))||'/';ls(P);shared()}
 function tab(n){${'$'}('p1').classList.toggle('hide',n!=1);${'$'}('p2').classList.toggle('hide',n!=2);${'$'}('t1').classList.toggle('on',n==1);${'$'}('t2').classList.toggle('on',n==2)}
+function selUI(){const n=SEL.size;${'$'}('selbar').classList.toggle('hide',!n);${'$'}('selcount').textContent=n+' selected · محدد';
+ const all=${'$'}('ckall');if(all){all.checked=n&&n==ITEMS.length;all.indeterminate=n>0&&n<ITEMS.length}
+ document.querySelectorAll('#list tr[data-n]').forEach(tr=>{const on=SEL.has(tr.dataset.n);tr.classList.toggle('on',on);tr.querySelector('input').checked=on})}
+function selAll(on){SEL.clear();if(on)ITEMS.forEach(i=>SEL.add(i.n));selUI()}
+function dlSel(){if(!SEL.size)return;location.href='/fs/zipsel'+q(P,'&names='+encodeURIComponent(JSON.stringify([...SEL])))}
+async function rmSel(){if(!SEL.size||!confirm('Move '+SEL.size+' items to the Recycle bin on the phone?'))return;
+ let bad=0;for(const n of [...SEL]){const r=await api('/fs/delete'+q(join(P,n)));if(r.status!=200)bad++}if(bad)alert(bad+' could not be deleted');SEL.clear();ls(P)}
 async function ls(path){const r=await api('/fs/ls'+q(path,${'$'}('hid').checked?'&h=1':''));if(r.status!=200){if(path!='/')ls('/');return}
- const j=await r.json();P=j.path;location.hash=encodeURIComponent(P);
+ const j=await r.json();if(j.path!=P)SEL.clear();P=j.path;ITEMS=j.items;location.hash=encodeURIComponent(P);
  const parts=P.split('/').filter(x=>x);let acc='',h='<a href="#" onclick="ls(\'/\');return false">📱 Phone</a>';
  for(const p of parts){acc+='/'+p;const a=acc;h+='<span>›</span><a href="#" data-p="'+encodeURIComponent(a)+'" onclick="ls(decodeURIComponent(this.dataset.p));return false"></a>'}
  ${'$'}('crumb').innerHTML=h;const links=${'$'}('crumb').querySelectorAll('a[data-p]');parts.forEach((p,i)=>links[i].textContent=p);
  ${'$'}('zipdl').href='/fs/zip'+q(P);
  const t=${'$'}('list');t.innerHTML='';
  if(!j.items.length){t.innerHTML='<tr><td class="s">Empty folder · مجلد فارغ</td></tr>'}
- for(const it of j.items){const full=join(P,it.n);const tr=document.createElement('tr');
+ else{const h=document.createElement('tr');h.innerHTML='<td class="ck"><input type="checkbox" id="ckall" title="Select all"></td><td colspan="3" class="s">'+j.items.length+' items · عنصر</td>';
+  t.append(h);${'$'}('ckall').onchange=e=>selAll(e.target.checked)}
+ for(const it of j.items){const full=join(P,it.n);const tr=document.createElement('tr');tr.dataset.n=it.n;
+  const ck=document.createElement('td');ck.className='ck';const cb=document.createElement('input');cb.type='checkbox';
+  cb.onchange=()=>{cb.checked?SEL.add(it.n):SEL.delete(it.n);selUI()};ck.append(cb);tr.append(ck);
   const ic=document.createElement('td');ic.style.width='54px';const box=document.createElement('div');box.className='ic';box.textContent=icon(it.n,it.d);
   if(!it.d&&(isImg(it.n)||isVid(it.n))){const im=new Image();im.loading='lazy';im.onload=()=>{box.textContent='';box.append(im)};im.src='/fs/thumb'+q(full)}
   ic.append(box);tr.append(ic);
@@ -109,7 +132,8 @@ async function ls(path){const r=await api('/fs/ls'+q(path,${'$'}('hid').checked?
   const dl=document.createElement('a');dl.textContent=it.d?'🗜':'⬇';dl.title='Download';dl.href=it.d?'/fs/zip'+q(full):'/fs/get'+q(full,'&dl=1');act.append(dl);
   const rn=document.createElement('a');rn.textContent='✎';rn.title='Rename';rn.onclick=()=>ren(full,it.n);act.append(rn);
   const del=document.createElement('a');del.textContent='🗑';del.title='Delete';del.onclick=()=>rm(full,it.n);act.append(del);
-  tr.append(act);t.append(tr)}}
+  tr.append(act);t.append(tr)}
+ selUI()}
 function openF(full,name){const u='/fs/get'+q(full);const v=${'$'}('vbox');v.innerHTML='';
  let el;if(isImg(name)){el=new Image();el.src=u}else if(isVid(name)){el=document.createElement('video');el.controls=true;el.autoplay=true;el.src=u}
  else if(isAud(name)){el=document.createElement('audio');el.controls=true;el.autoplay=true;el.src=u}
@@ -120,15 +144,24 @@ function closeV(){${'$'}('vbox').innerHTML='';${'$'}('view').classList.add('hide
 async function mk(){const n=prompt('New folder name · اسم المجلد');if(!n)return;await api('/fs/mkdir'+q(P,'&n='+encodeURIComponent(n)));ls(P)}
 async function ren(full,old){const n=prompt('New name · الاسم الجديد',old);if(!n||n==old)return;const r=await api('/fs/rename'+q(full,'&n='+encodeURIComponent(n)));if(r.status!=200)alert('Could not rename');ls(P)}
 async function rm(full,name){if(!confirm('Move “'+name+'” to the Recycle bin on the phone?'))return;const r=await api('/fs/delete'+q(full));if(r.status!=200)alert('Could not delete');ls(P)}
-function up(file){return new Promise(res=>{const row=document.createElement('div');row.innerHTML='<div class="s"><span></span> · <b></b></div><div class="bar"><i></i></div>';
- row.querySelector('span').textContent=file.name;${'$'}('ups').append(row);const x=new XMLHttpRequest();
- x.open('POST','/fs/put'+q(P,'&n='+encodeURIComponent(file.name)));
+function up(file,rel,last,count){return new Promise(res=>{const row=document.createElement('div');row.innerHTML='<div class="s"><span></span> · <b></b></div><div class="bar"><i></i></div>';
+ row.querySelector('span').textContent=rel||file.name;${'$'}('ups').append(row);const x=new XMLHttpRequest();
+ x.open('POST','/fs/put'+q(P,'&n='+encodeURIComponent(rel||file.name)+(last?'&last=1&count='+count:'')));
  x.upload.onprogress=e=>{row.querySelector('i').style.width=(e.loaded*100/e.total)+'%';row.querySelector('b').textContent=size(e.loaded)};
  x.onload=()=>{row.querySelector('b').textContent=x.status==200?'✓':'✗';res()};x.onerror=()=>{row.querySelector('b').textContent='✗';res()};x.send(file)})}
-async function many(fs){for(const f of fs)await up(f);ls(P)}
-${'$'}('pick').onchange=e=>many([...e.target.files]);
+// list = [[File, relativePath], ...]
+async function many(list){for(let i=0;i<list.length;i++)await up(list[i][0],list[i][1],i==list.length-1,list.length);ls(P)}
+${'$'}('pick').onchange=e=>{many([...e.target.files].map(f=>[f,f.name]));e.target.value=''};
+${'$'}('pickdir').onchange=e=>{many([...e.target.files].map(f=>[f,f.webkitRelativePath||f.name]));e.target.value=''};
+function readEntry(en,path,out){return new Promise(res=>{
+ if(en.isFile)en.file(f=>{out.push([f,path+f.name]);res()},()=>res());
+ else{const rd=en.createReader();const all=[];const next=()=>rd.readEntries(async es=>{if(!es.length){for(const c of all)await readEntry(c,path+en.name+'/',out);res()}else{all.push(...es);next()}},()=>res());next()}})}
 const d=${'$'}('drop');d.ondragover=e=>{e.preventDefault();d.classList.add('over')};d.ondragleave=()=>d.classList.remove('over');
-d.ondrop=e=>{e.preventDefault();d.classList.remove('over');many([...e.dataTransfer.files])};
+d.ondrop=async e=>{e.preventDefault();d.classList.remove('over');const out=[];
+ const items=[...e.dataTransfer.items].map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry()).filter(x=>x);
+ if(items.length){for(const en of items)await readEntry(en,'',out)}else[...e.dataTransfer.files].forEach(f=>out.push([f,f.name]));
+ many(out)};
+document.addEventListener('keydown',e=>{if(e.key=='F5'&&!e.ctrlKey){e.preventDefault();ls(P)}});
 async function shared(){const r=await api('/web/list?c='+C);const j=await r.json();const f=${'$'}('files');
  if(!j.files.length){f.textContent='Nothing picked in “To send” on the phone · لا توجد ملفات';return}
  f.innerHTML='';for(const x of j.files){const row=document.createElement('div');row.style.padding='8px 0';
