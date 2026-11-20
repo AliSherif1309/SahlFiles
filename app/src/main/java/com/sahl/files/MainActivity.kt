@@ -107,7 +107,7 @@ class MainActivity : Activity() {
         val v = virtual; virtual = null
         if (v != null) showVirtual("📊 " + v.first, v.second)
         else if (searching == null) { val sel0 = pendingSelect; pendingSelect = null; load(dir, keep = true, select = sel0) }
-        Updater.checkOnStart(this)
+        UpdatePrompt.checkOnStart(this)
     }
 
     override fun onDestroy() { super.onDestroy(); thumbPool.shutdownNow() }
@@ -667,7 +667,7 @@ class MainActivity : Activity() {
                 1 -> { showHidden = !showHidden; load(dir, keep = true) }
                 2 -> startActivity(Intent(this, StorageActivity::class.java))
                 3 -> { showSizes = !showSizes; if (!showSizes) dirSizes.clear(); load(dir, keep = true) }
-                4 -> Updater.checkNow(this)
+                4 -> UpdatePrompt.checkNow(this)
                 5 -> dialog().setTitle(t("Sahl Files", "سهل للملفات"))
                     .setMessage("v${BuildConfig.VERSION_NAME}\n\n" + t("File manager, cleaner, private vault and Wi-Fi sharing (works with LocalSend).\nPart of the Sahl apps family.",
                         "مدير ملفات ومنظّف وخزنة خاصة ومشاركة عبر الواي فاي (يعمل مع LocalSend).\nمن عائلة تطبيقات سهل."))
