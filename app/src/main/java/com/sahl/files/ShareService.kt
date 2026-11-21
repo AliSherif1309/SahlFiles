@@ -25,7 +25,7 @@ class ShareService : Service(), Lan.Events {
         fun start(c: Context) { if (inst == null) c.startForegroundService(Intent(c, ShareService::class.java)) }
         fun stop(c: Context) { c.stopService(Intent(c, ShareService::class.java)) }
         fun quickSave(c: Context) = c.getSharedPreferences("share", 0).getBoolean("quick", false)
-        private const val CH = "share"; private const val CH_IN = "incoming"
+        private const val CH = "share"; private const val CH_IN = "incoming_chime"
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -40,7 +40,8 @@ class ShareService : Service(), Lan.Events {
         super.onCreate()
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CH, t("Sahl Share running", "سهل للمشاركة يعمل"), NotificationManager.IMPORTANCE_LOW))
-        nm.createNotificationChannel(NotificationChannel(CH_IN, t("Incoming files", "الملفات الواردة"), NotificationManager.IMPORTANCE_HIGH))
+        nm.createNotificationChannel(SahlCore.chimeChannel(this, CH_IN, t("Incoming files", "الملفات الواردة")))
+        try { nm.deleteNotificationChannel("incoming") } catch (e: Exception) { }
         startForeground(1, note(t("Visible on Wi-Fi as ${Lan.alias(this)}", "ظاهر على الواي فاي باسم ${Lan.alias(this)}"), Lan.ip()),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         lock = (applicationContext.getSystemService(WIFI_SERVICE) as WifiManager).createMulticastLock("sahl-share").apply { setReferenceCounted(false); acquire() }

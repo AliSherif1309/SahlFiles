@@ -86,6 +86,7 @@ class MainActivity : Activity() {
         set(v) { prefs.edit().putBoolean("hidden", v).apply() }
 
     override fun onCreate(b: Bundle?) {
+        SahlCore.catchCrashes(this)
         super.onCreate(b)
         C.init(this)
         intent.getStringExtra("path")?.let { dir = File(it) }

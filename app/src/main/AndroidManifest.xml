@@ -33,8 +33,11 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".ViewerActivity" android:exported="false"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+        <activity android:name=".ViewerActivity" android:exported="true" android:permission="com.sahl.permission.UNION"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
+            <!-- Sahl Search opens a file here -->
+            <intent-filter><action android:name="com.sahl.files.action.OPEN" /><category android:name="android.intent.category.DEFAULT" /></intent-filter>
+        </activity>
         <activity android:name=".StorageActivity" android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout" />
         <activity android:name=".CleanerActivity" android:exported="false"
@@ -82,5 +85,8 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/paths" />
         </provider>
+        <activity android:name=".SahlCrashActivity" android:exported="false" android:process=":crash" />
+        <provider android:name=".UnionProvider" android:authorities="com.sahl.files.union"
+            android:exported="true" android:readPermission="com.sahl.permission.UNION" />
     </application>
 </manifest>
