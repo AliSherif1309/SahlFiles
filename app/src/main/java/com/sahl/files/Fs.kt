@@ -29,6 +29,17 @@ object Fs {
         else -> "📄"
     }
 
+    fun iconRes(f: File): Int = if (f.isDirectory) R.drawable.ic_sahl_folder else when (f.extension.lowercase()) {
+        in img -> R.drawable.ic_sahl_image
+        in vid -> R.drawable.ic_sahl_video
+        in aud -> R.drawable.ic_sahl_audio
+        "pdf" -> R.drawable.ic_sahl_pdf
+        "apk", "apks", "xapk" -> R.drawable.ic_sahl_apk
+        "zip", "rar", "7z", "tar", "gz" -> R.drawable.ic_sahl_zip
+        "doc", "docx", "odt", "xls", "xlsx", "csv", "ppt", "pptx", "txt", "md" -> R.drawable.ic_sahl_doc
+        else -> R.drawable.ic_sahl_file
+    }
+
     fun mime(name: String) = MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase())
         ?: "application/octet-stream"
     fun mime(f: File) = mime(f.name)
