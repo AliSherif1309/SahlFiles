@@ -102,6 +102,26 @@ fun Context.iconBtn(icon: String, run: () -> Unit) = TextView(this).apply {
     setOnClickListener { run() }
 }
 
+fun Activity.topBarRes(title: String, back: Boolean, vararg actions: Pair<Int, () -> Unit>) = LinearLayout(this).apply {
+    orientation = LinearLayout.HORIZONTAL
+    gravity = Gravity.CENTER_VERTICAL
+    setPadding(dp(8), dp(10), dp(8), dp(6))
+    if (back) addView(iconBtn(if (isAr) "→" else "←") { onBackPressed() })
+    addView(label(title, 22f, C.TEXT, true).apply { setPadding(dp(10), 0, 0, 0) }, lp(0, WRAP_CONTENT, 1f))
+    for ((resId, run) in actions) addView(iconResBtn(resId, C.TEXT, run))
+}
+
+fun Context.iconResBtn(resId: Int, tint: Int = C.TEXT, run: () -> Unit) = ImageView(this).apply {
+    setImageResource(resId)
+    setColorFilter(tint)
+    scaleType = ImageView.ScaleType.CENTER_INSIDE
+    val p = dp(11)
+    setPadding(p, p, p, p)
+    background = ripple(null)
+    layoutParams = LinearLayout.LayoutParams(dp(46), dp(46))
+    setOnClickListener { run() }
+}
+
 fun Activity.dialog(): AlertDialog.Builder =
     AlertDialog.Builder(this, if (C.night) android.R.style.Theme_DeviceDefault_Dialog_Alert else android.R.style.Theme_DeviceDefault_Light_Dialog_Alert)
 

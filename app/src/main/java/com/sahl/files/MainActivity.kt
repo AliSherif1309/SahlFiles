@@ -136,8 +136,10 @@ class MainActivity : Activity() {
 
     private fun build() {
         val rootView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(C.BG) }
-        rootView.addView(topBar(t("Sahl Files", "سهل للملفات"), false,
-            "↻" to { refresh() }, "🔍" to { search() }, "⋮" to { menu() }))
+        rootView.addView(topBarRes(t("Sahl Files", "سهل للملفات"), false,
+            R.drawable.ic_sahl_refresh to { refresh() },
+            R.drawable.ic_sahl_search to { search() },
+            R.drawable.ic_sahl_more to { menu() }))
 
         places = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(12), 0, dp(12), 0) }
         rootView.addView(HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(places) })
@@ -223,59 +225,69 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL; background = round(C.CARD, 22)
             setPadding(dp(4), dp(4), dp(4), dp(4))
         }
-        fun navItem(icon: String, name: String, run: () -> Unit) = nav.addView(LinearLayout(this).apply {
+        fun navItem(iconRes: Int, name: String, tint: Int = C.TEXT, run: () -> Unit) = nav.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
             setPadding(0, dp(6), 0, dp(6)); background = ripple(null)
-            addView(label(icon, 20f).apply { gravity = Gravity.CENTER })
-            addView(label(name, 11f, C.SUB).apply { gravity = Gravity.CENTER })
+            addView(ImageView(this@MainActivity).apply {
+                setImageResource(iconRes); setColorFilter(tint)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+            }, LinearLayout.LayoutParams(dp(22), dp(22)))
+            addView(label(name, 11f, C.SUB).apply { gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0) })
             setOnClickListener { run() }
         }, lp(0, WRAP_CONTENT, 1f))
-        navItem("＋", t("New", "جديد")) { addMenu() }
-        navItem("🧹", t("Cleaner", "التنظيف")) { startActivity(Intent(this, CleanerActivity::class.java)) }
-        navItem("🔒", t("Vault", "الخزنة")) { startActivity(Intent(this, VaultActivity::class.java)) }
-        navItem("📡", t("Share", "المشاركة")) { startActivity(Intent(this, ShareActivity::class.java)) }
-        navItem("🗑", t("Bin", "المحذوفات")) { recycleBin() }
+        val gold = 0xFFF5C84C.toInt()
+        navItem(R.drawable.ic_sahl_add, t("New", "جديد"), C.GREEN) { addMenu() }
+        navItem(R.drawable.ic_sahl_cleaner, t("Cleaner", "التنظيف"), C.TEXT) { startActivity(Intent(this, CleanerActivity::class.java)) }
+        navItem(R.drawable.ic_sahl_vault, t("Vault", "الخزنة"), gold) { startActivity(Intent(this, VaultActivity::class.java)) }
+        navItem(R.drawable.ic_sahl_share, t("Share", "المشاركة"), C.TEXT) { startActivity(Intent(this, ShareActivity::class.java)) }
+        navItem(R.drawable.ic_sahl_bin, t("Bin", "المحذوفات"), C.SUB) { recycleBin() }
         rootView.addView(nav, lp().margins(this, 10, 0, 10, 10))
 
         setContentView(rootView)
         refreshBars()
     }
 
-    private fun chip(text: String, run: () -> Unit) = TextView(this).apply {
-        this.text = text; textSize = 13f; setTextColor(C.TEXT)
-        setPadding(dp(14), dp(8), dp(14), dp(8))
+    private fun chip(iconRes: Int, text: String, tint: Int = C.GREEN, run: () -> Unit) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(12), dp(7), dp(14), dp(7))
         background = ripple(round(C.CARD, 18))
+        addView(ImageView(this@MainActivity).apply {
+            setImageResource(iconRes); setColorFilter(tint)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+        }, LinearLayout.LayoutParams(dp(16), dp(16)).margins(this@MainActivity, r = 6))
+        addView(label(text, 13f, C.TEXT))
         setOnClickListener { run() }
     }
 
     private fun buildPlaces() {
         places.removeAllViews()
-        fun add(name: String, f: File) {
+        fun add(iconRes: Int, name: String, f: File, tint: Int = C.GREEN) {
             if (!f.exists()) return
-            places.addView(chip(name) { load(f) }, lp(WRAP_CONTENT).margins(this, r = 8))
+            places.addView(chip(iconRes, name, tint) { load(f) }, lp(WRAP_CONTENT).margins(this, r = 8))
         }
         val r = Fs.root
-        add(t("📱 Phone", "📱 الهاتف"), r)
-        places.addView(chip(t("🕘 Recent", "🕘 الأخيرة")) { showRecent() }, lp(WRAP_CONTENT).margins(this, r = 8))
+        val gold = 0xFFF5C84C.toInt()
+        add(R.drawable.ic_sahl_phone, t("Phone", "الهاتف"), r)
+        places.addView(chip(R.drawable.ic_sahl_recent, t("Recent", "الأخيرة")) { showRecent() }, lp(WRAP_CONTENT).margins(this, r = 8))
         for (p in favs.sorted()) {
             val f = File(p); if (!f.exists()) continue
-            places.addView(chip("★ " + f.name) { if (f.isDirectory) load(f) else openFile(f) }.apply {
+            places.addView(chip(R.drawable.ic_sahl_star, f.name, gold) { if (f.isDirectory) load(f) else openFile(f) }.apply {
                 setOnLongClickListener {
                     confirm(t("Remove from favourites?", "إزالة من المفضلة؟"), f.name, t("Remove", "إزالة")) { favs = favs - p; buildPlaces() }; true
                 }
             }, lp(WRAP_CONTENT).margins(this, r = 8))
         }
-        add(t("⬇ Download", "⬇ التنزيلات"), File(r, Environment.DIRECTORY_DOWNLOADS))
-        add(t("📷 Camera", "📷 الكاميرا"), File(r, "DCIM/Camera"))
-        add(t("🖼 Pictures", "🖼 الصور"), File(r, Environment.DIRECTORY_PICTURES))
-        add(t("📄 Documents", "📄 المستندات"), File(r, Environment.DIRECTORY_DOCUMENTS))
-        add(t("🎵 Music", "🎵 الصوتيات"), File(r, Environment.DIRECTORY_MUSIC))
-        add(t("🎬 Movies", "🎬 الفيديو"), File(r, Environment.DIRECTORY_MOVIES))
-        add("💬 WhatsApp", File(r, "Android/media/com.whatsapp/WhatsApp/Media"))
-        add(t("📡 Received", "📡 المستلمة"), Fs.received)
+        add(R.drawable.ic_sahl_download, t("Download", "التنزيلات"), File(r, Environment.DIRECTORY_DOWNLOADS))
+        add(R.drawable.ic_sahl_camera, t("Camera", "الكاميرا"), File(r, "DCIM/Camera"))
+        add(R.drawable.ic_sahl_image, t("Pictures", "الصور"), File(r, Environment.DIRECTORY_PICTURES))
+        add(R.drawable.ic_sahl_doc, t("Documents", "المستندات"), File(r, Environment.DIRECTORY_DOCUMENTS))
+        add(R.drawable.ic_sahl_audio, t("Music", "الصوتيات"), File(r, Environment.DIRECTORY_MUSIC))
+        add(R.drawable.ic_sahl_video, t("Movies", "الفيديو"), File(r, Environment.DIRECTORY_MOVIES))
+        add(R.drawable.ic_sahl_chat, "WhatsApp", File(r, "Android/media/com.whatsapp/WhatsApp/Media"))
+        add(R.drawable.ic_sahl_share, t("Received", "المستلمة"), Fs.received)
         try {
             val sm = getSystemService(StorageManager::class.java)
-            for (v in sm.storageVolumes) if (v.isRemovable) v.directory?.let { add("💾 " + v.getDescription(this), it) }
+            for (v in sm.storageVolumes) if (v.isRemovable) v.directory?.let { add(R.drawable.ic_sahl_sd, v.getDescription(this), it) }
         } catch (_: Exception) {}
     }
 
@@ -722,7 +734,9 @@ class MainActivity : Activity() {
                 setPadding(dp(14), dp(8), dp(14), dp(8))
                 val frame = FrameLayout(this@MainActivity).apply {
                     background = round(C.CARD, 12)
-                    addView(label("", 24f).apply { gravity = Gravity.CENTER; tag = "ic" }, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+                    addView(ImageView(this@MainActivity).apply {
+                        scaleType = ImageView.ScaleType.CENTER_INSIDE; tag = "ic"
+                    }, FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
                     addView(ImageView(this@MainActivity).apply { scaleType = ImageView.ScaleType.CENTER_CROP; tag = "img"; clipToOutline = true; background = round(C.CARD, 12) },
                         FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
                 }
@@ -735,7 +749,7 @@ class MainActivity : Activity() {
                 addView(label("", 18f, C.GREEN).apply { tag = "check" })
             }
             val f = items[p]
-            val ic = row.findViewWithTag<TextView>("ic"); val img = row.findViewWithTag<ImageView>("img")
+            val ic = row.findViewWithTag<ImageView>("ic"); val img = row.findViewWithTag<ImageView>("img")
             row.findViewWithTag<TextView>("name").text = if (f.absolutePath in favSet) "★ " + f.name else f.name
             row.findViewWithTag<TextView>("sub").text = when {
                 searching != null -> f.parent?.removePrefix(Fs.root.absolutePath)?.ifEmpty { "/" } ?: ""
@@ -746,7 +760,7 @@ class MainActivity : Activity() {
             val on = f in sel
             row.findViewWithTag<TextView>("check").text = if (on) "✔" else ""
             row.background = if (on) round(C.SEL, 14) else null
-            ic.text = Fs.icon(f)
+            ic.setImageResource(Fs.iconRes(f))
             img.setImageDrawable(null); img.visibility = View.GONE
             if (f.isFile && (Fs.isImage(f) || Fs.isVideo(f))) {
                 val key = f.absolutePath + f.lastModified()
