@@ -187,34 +187,38 @@ class MainActivity : Activity() {
         // selection actions
         selCount = label("", 14f, C.TEXT, true).apply { setPadding(dp(14), 0, dp(10), 0) }
         val acts = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        fun act(icon: String, name: String, run: () -> Unit) = acts.addView(LinearLayout(this).apply {
+        fun act(iconRes: Int, name: String, tint: Int = C.TEXT, run: () -> Unit) = acts.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
             setPadding(dp(10), dp(6), dp(10), dp(6)); background = ripple(null)
-            addView(label(icon, 20f).apply { gravity = Gravity.CENTER })
-            addView(label(name, 11f, C.SUB).apply { gravity = Gravity.CENTER })
+            addView(ImageView(this@MainActivity).apply {
+                setImageResource(iconRes); setColorFilter(tint)
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+            }, LinearLayout.LayoutParams(dp(20), dp(20)))
+            addView(label(name, 11f, C.SUB).apply { gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0) })
             setOnClickListener { run() }
         })
-        act("✓", t("All", "الكل")) { sel.addAll(items); refreshBars(); adapter.notifyDataSetChanged() }
-        act("⧉", t("Copy", "نسخ")) { setClip(false) }
-        act("➜", t("Move", "نقل")) { setClip(true) }
-        act("✎", t("Rename", "تسمية")) { rename() }
-        act("🗑", t("Delete", "حذف")) { delete() }
-        act("↗", t("Share", "مشاركة")) { Fs.share(this, sel.toList()) }
-        act("⧉↗", t("Open with", "فتح بواسطة")) {
+        val goldSel = 0xFFF5C84C.toInt()
+        act(R.drawable.ic_sahl_check_all, t("All", "الكل"), C.GREEN) { sel.addAll(items); refreshBars(); adapter.notifyDataSetChanged() }
+        act(R.drawable.ic_sahl_copy, t("Copy", "نسخ")) { setClip(false) }
+        act(R.drawable.ic_sahl_move, t("Move", "نقل")) { setClip(true) }
+        act(R.drawable.ic_sahl_edit, t("Rename", "تسمية")) { rename() }
+        act(R.drawable.ic_sahl_bin, t("Delete", "حذف")) { delete() }
+        act(R.drawable.ic_sahl_share, t("Share", "مشاركة")) { Fs.share(this, sel.toList()) }
+        act(R.drawable.ic_sahl_open_in, t("Open with", "فتح بواسطة")) {
             val f = sel.singleOrNull()?.takeIf { it.isFile }
             if (f == null) toast(t("Select one file", "حدّد ملفًا واحدًا")) else { sel.clear(); refreshBars(); adapter.notifyDataSetChanged(); Fs.open(this, f) }
         }
-        act("🗜", t("Zip", "ضغط")) { zipSelected() }
-        act("★", t("Favourite", "مفضلة")) { toggleFav() }
-        act("📡", t("Send", "إرسال")) { sendWifi() }
-        act("🔒", t("Vault", "الخزنة")) { toVault() }
-        act("ⓘ", t("Details", "تفاصيل")) { details() }
+        act(R.drawable.ic_sahl_zip, t("Zip", "ضغط")) { zipSelected() }
+        act(R.drawable.ic_sahl_star, t("Favourite", "مفضلة"), goldSel) { toggleFav() }
+        act(R.drawable.ic_sahl_send, t("Send", "إرسال"), C.GREEN) { sendWifi() }
+        act(R.drawable.ic_sahl_vault, t("Vault", "الخزنة"), goldSel) { toVault() }
+        act(R.drawable.ic_sahl_info, t("Details", "تفاصيل"), C.SUB) { details() }
         selBar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; background = round(C.CARD, 18)
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 addView(selCount, lp(0, WRAP_CONTENT, 1f))
-                addView(iconBtn("✕") { sel.clear(); refreshBars(); adapter.notifyDataSetChanged() })
+                addView(iconResBtn(R.drawable.ic_sahl_close, C.TEXT) { sel.clear(); refreshBars(); adapter.notifyDataSetChanged() })
             })
             addView(HorizontalScrollView(this@MainActivity).apply { isHorizontalScrollBarEnabled = false; addView(acts) })
         }
@@ -670,7 +674,7 @@ class MainActivity : Activity() {
         val opts = arrayOf(
             t("Sort: ", "الترتيب: ") + sorts[sort],
             if (showHidden) t("Hide hidden files", "إخفاء الملفات المخفية") else t("Show hidden files", "إظهار الملفات المخفية"),
-            t("📊 Storage map", "📊 خريطة المساحة"),
+            t("Storage map", "خريطة المساحة"),
             if (showSizes) t("Hide folder sizes", "إخفاء أحجام المجلدات") else t("Show folder sizes", "إظهار أحجام المجلدات"),
             t("Check for updates", "البحث عن تحديث"),
             t("About", "حول التطبيق"))
