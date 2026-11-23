@@ -19,9 +19,14 @@ header{position:sticky;top:0;z-index:5;background:var(--bg);padding:14px 18px 8p
 h1{font-size:20px;margin:0}h1 b{color:var(--gold)}.s{color:var(--s);font-size:13px}
 main{max-width:1100px;margin:0 auto;padding:10px 16px 60px}
 .card{background:var(--card);border-radius:16px;padding:16px;margin:12px 0}
-input[type=text],input[type=password]{font-size:26px;letter-spacing:8px;text-align:center;width:100%;padding:10px;border-radius:12px;border:1px solid var(--s);background:transparent;color:var(--t)}
+#code{font-size:26px;letter-spacing:8px;text-align:center;width:100%;padding:10px;border-radius:12px;border:1px solid var(--s);background:transparent;color:var(--t)}
 button,.btn{display:inline-block;background:var(--g);color:#fff;border:0;border-radius:20px;padding:8px 16px;font-size:14px;cursor:pointer;margin:4px 4px 4px 0;text-decoration:none}
 .btn.o{background:transparent;color:var(--g);border:1px solid var(--g)}
+.bar-ctl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.ctl{background:var(--bg);color:var(--t);border:1px solid var(--line);border-radius:20px;padding:7px 12px;font-size:13px;outline:0}
+.ctl:focus{border-color:var(--g)}
+input.ctl{flex:1;min-width:160px}
+select.ctl{cursor:pointer}
 a{color:inherit;text-decoration:none}
 .tabs button{background:transparent;color:var(--s);border-radius:0;border-bottom:2px solid transparent;padding:8px 12px}
 .tabs button.on{color:var(--g);border-color:var(--g);font-weight:600}
@@ -64,6 +69,28 @@ tr.on{background:var(--sel)}
     <a class="btn o" id="zipdl">🗜 Download folder (zip)</a>
     <label class="s"><input type="checkbox" id="hid" onchange="ls(P)"> hidden files</label>
    </div>
+   <div class="bar-ctl">
+    <input type="search" id="pf" class="ctl" placeholder="Filter by name · تصفية بالاسم" oninput="renderList()">
+    <select id="pt" class="ctl" onchange="renderList()">
+     <option value="">All types · كل الأنواع</option>
+     <option value="dir">📁 Folders · مجلدات</option>
+     <option value="img">🖼 Images · صور</option>
+     <option value="vid">🎬 Videos · فيديو</option>
+     <option value="aud">🎵 Audio · صوت</option>
+     <option value="doc">📄 Documents · مستندات</option>
+     <option value="arc">🗜 Archives · مضغوطة</option>
+     <option value="apk">📦 APK</option>
+     <option value="other">📄 Other · أخرى</option>
+    </select>
+    <select id="ps" class="ctl" onchange="renderList()">
+     <option value="name-asc">Name A→Z · الاسم أ-ي</option>
+     <option value="name-desc">Name Z→A · الاسم ي-أ</option>
+     <option value="date-desc">Newest · الأحدث</option>
+     <option value="date-asc">Oldest · الأقدم</option>
+     <option value="size-desc">Largest · الأكبر</option>
+     <option value="size-asc">Smallest · الأصغر</option>
+    </select>
+   </div>
    <div id="ups"></div>
    <div class="s" id="note"></div>
   </div>
@@ -76,13 +103,38 @@ tr.on{background:var(--sel)}
  </div>
 
  <div id="p2" class="hide">
-  <div class="card"><b>Files the phone is sharing · ملفات يشاركها الهاتف</b><div id="files" class="s">…</div></div>
+  <div class="card">
+   <b>Files the phone is sharing · ملفات يشاركها الهاتف</b>
+   <div class="bar-ctl">
+    <button class="btn o" onclick="shared()" title="Refresh">↻ Refresh · تحديث</button>
+    <input type="search" id="sf" class="ctl" placeholder="Filter by name · تصفية بالاسم" oninput="renderShared()">
+    <select id="st" class="ctl" onchange="renderShared()">
+     <option value="">All types · كل الأنواع</option>
+     <option value="img">🖼 Images · صور</option>
+     <option value="vid">🎬 Videos · فيديو</option>
+     <option value="aud">🎵 Audio · صوت</option>
+     <option value="doc">📄 Documents · مستندات</option>
+     <option value="arc">🗜 Archives · مضغوطة</option>
+     <option value="apk">📦 APK</option>
+     <option value="other">📄 Other · أخرى</option>
+    </select>
+    <select id="ss" class="ctl" onchange="renderShared()">
+     <option value="orig">Order · الترتيب</option>
+     <option value="name-asc">Name A→Z · الاسم أ-ي</option>
+     <option value="name-desc">Name Z→A · الاسم ي-أ</option>
+     <option value="size-desc">Largest · الأكبر</option>
+     <option value="size-asc">Smallest · الأصغر</option>
+     <option value="type">Type · النوع</option>
+    </select>
+   </div>
+  </div>
+  <div class="card"><div id="files" class="s">…</div></div>
  </div>
 </div>
 <div id="view" class="hide" onclick="if(event.target===this)closeV()"><span class="x" onclick="closeV()">✕</span><div id="vbox"></div></div>
 </main>
 <script>
-let C=sessionStorage.getItem('c')||'',P='/',ITEMS=[];const SEL=new Set();
+let C=sessionStorage.getItem('c')||'',P='/',ITEMS=[],VIS=[],SHARED=[];const SEL=new Set();
 const ${'$'}=id=>document.getElementById(id);
 const q=(path,extra)=>'?c='+C+'&p='+encodeURIComponent(path)+(extra||'');
 const join=(a,b)=>(a=='/'?'':a)+'/'+b;
@@ -91,6 +143,10 @@ function icon(n,d){if(d)return'📁';const e=n.split('.').pop().toLowerCase();
  if(['jpg','jpeg','png','webp','gif','heic','bmp'].includes(e))return'🖼';if(['mp4','mkv','webm','mov','3gp','avi'].includes(e))return'🎬';
  if(['mp3','m4a','ogg','wav','flac','aac','opus'].includes(e))return'🎵';if(e=='pdf')return'📕';if(e=='apk')return'📦';
  if(['zip','rar','7z','tar','gz'].includes(e))return'🗜';return'📄'}
+function kind(n,d){if(d)return'dir';const e=n.split('.').pop().toLowerCase();
+ if(['jpg','jpeg','png','webp','gif','heic','bmp','svg'].includes(e))return'img';if(['mp4','mkv','webm','mov','3gp','avi','m4v'].includes(e))return'vid';
+ if(['mp3','m4a','ogg','wav','flac','aac','opus'].includes(e))return'aud';if(['pdf','txt','log','md','json','xml','csv','html','htm','doc','docx','xls','xlsx','ppt','pptx'].includes(e))return'doc';
+ if(['zip','rar','7z','tar','gz'].includes(e))return'arc';if(e=='apk')return'apk';return'other'}
 const isImg=n=>/\.(jpe?g|png|webp|gif|bmp|heic)${'$'}/i.test(n),isVid=n=>/\.(mp4|webm|mkv|mov|3gp|m4v)${'$'}/i.test(n),
       isAud=n=>/\.(mp3|m4a|ogg|wav|flac|aac|opus)${'$'}/i.test(n),isDoc=n=>/\.(pdf|txt|log|md|json|xml|csv|html?|svg)${'$'}/i.test(n);
 async function api(u,opt){const r=await fetch(u,opt);if(r.status==401||r.status==429){sessionStorage.removeItem('c');location.reload()}return r}
@@ -101,11 +157,11 @@ async function go(){C=${'$'}('code').value.trim();const r=await fetch('/fs/info?
  ${'$'}('note').textContent=j.full?'':'Showing the Received folder only. To see all phone files, turn on “Let the browser see all my files” in Sahl Share. · يعرض مجلد المستلمة فقط.';
  ${'$'}('login').classList.add('hide');${'$'}('app').classList.remove('hide');
  P=decodeURIComponent(location.hash.slice(1))||'/';ls(P);shared()}
-function tab(n){${'$'}('p1').classList.toggle('hide',n!=1);${'$'}('p2').classList.toggle('hide',n!=2);${'$'}('t1').classList.toggle('on',n==1);${'$'}('t2').classList.toggle('on',n==2)}
+function tab(n){${'$'}('p1').classList.toggle('hide',n!=1);${'$'}('p2').classList.toggle('hide',n!=2);${'$'}('t1').classList.toggle('on',n==1);${'$'}('t2').classList.toggle('on',n==2);if(n==2)shared()}
 function selUI(){const n=SEL.size;${'$'}('selbar').classList.toggle('hide',!n);${'$'}('selcount').textContent=n+' selected · محدد';
- const all=${'$'}('ckall');if(all){all.checked=n&&n==ITEMS.length;all.indeterminate=n>0&&n<ITEMS.length}
+ const all=${'$'}('ckall');if(all){const vn=VIS.filter(i=>SEL.has(i.n)).length;all.checked=VIS.length&&vn==VIS.length;all.indeterminate=vn>0&&vn<VIS.length}
  document.querySelectorAll('#list tr[data-n]').forEach(tr=>{const on=SEL.has(tr.dataset.n);tr.classList.toggle('on',on);tr.querySelector('input').checked=on})}
-function selAll(on){SEL.clear();if(on)ITEMS.forEach(i=>SEL.add(i.n));selUI()}
+function selAll(on){if(on)VIS.forEach(i=>SEL.add(i.n));else SEL.clear();selUI()}
 function dlSel(){if(!SEL.size)return;location.href='/fs/zipsel'+q(P,'&names='+encodeURIComponent(JSON.stringify([...SEL])))}
 async function rmSel(){if(!SEL.size||!confirm('Move '+SEL.size+' items to the Recycle bin on the phone?'))return;
  let bad=0;for(const n of [...SEL]){const r=await api('/fs/delete'+q(join(P,n)));if(r.status!=200)bad++}if(bad)alert(bad+' could not be deleted');SEL.clear();ls(P)}
@@ -115,11 +171,24 @@ async function ls(path){const r=await api('/fs/ls'+q(path,${'$'}('hid').checked?
  for(const p of parts){acc+='/'+p;const a=acc;h+='<span>›</span><a href="#" data-p="'+encodeURIComponent(a)+'" onclick="ls(decodeURIComponent(this.dataset.p));return false"></a>'}
  ${'$'}('crumb').innerHTML=h;const links=${'$'}('crumb').querySelectorAll('a[data-p]');parts.forEach((p,i)=>links[i].textContent=p);
  ${'$'}('zipdl').href='/fs/zip'+q(P);
+ renderList()}
+function renderList(){
+ const f=(${'$'}('pf').value||'').trim().toLowerCase(),tp=${'$'}('pt').value,sr=${'$'}('ps').value;
+ VIS=ITEMS.filter(it=>(!f||it.n.toLowerCase().includes(f))&&(!tp||kind(it.n,it.d)==tp));
+ VIS.sort((a,b)=>{if(a.d!=b.d)return a.d?-1:1;
+  if(sr=='name-desc')return b.n.localeCompare(a.n,undefined,{sensitivity:'base'});
+  if(sr=='date-desc')return b.m-a.m;
+  if(sr=='date-asc')return a.m-b.m;
+  if(sr=='size-desc')return b.s-a.s;
+  if(sr=='size-asc')return a.s-b.s;
+  return a.n.localeCompare(b.n,undefined,{sensitivity:'base'})});
  const t=${'$'}('list');t.innerHTML='';
- if(!j.items.length){t.innerHTML='<tr><td class="s">Empty folder · مجلد فارغ</td></tr>'}
- else{const h=document.createElement('tr');h.innerHTML='<td class="ck"><input type="checkbox" id="ckall" title="Select all"></td><td colspan="3" class="s">'+j.items.length+' items · عنصر</td>';
-  t.append(h);${'$'}('ckall').onchange=e=>selAll(e.target.checked)}
- for(const it of j.items){const full=join(P,it.n);const tr=document.createElement('tr');tr.dataset.n=it.n;
+ if(!ITEMS.length){t.innerHTML='<tr><td class="s">Empty folder · مجلد فارغ</td></tr>';selUI();return}
+ if(!VIS.length){t.innerHTML='<tr><td class="s">No matching items · لا توجد عناصر مطابقة</td></tr>';selUI();return}
+ const cnt=VIS.length==ITEMS.length?ITEMS.length+' items · عنصر':VIS.length+' / '+ITEMS.length+' items · عنصر';
+ const h=document.createElement('tr');h.innerHTML='<td class="ck"><input type="checkbox" id="ckall" title="Select all"></td><td colspan="3" class="s">'+cnt+'</td>';
+ t.append(h);${'$'}('ckall').onchange=e=>selAll(e.target.checked);
+ for(const it of VIS){const full=join(P,it.n);const tr=document.createElement('tr');tr.dataset.n=it.n;
   const ck=document.createElement('td');ck.className='ck';const cb=document.createElement('input');cb.type='checkbox';
   cb.onchange=()=>{cb.checked?SEL.add(it.n):SEL.delete(it.n);selUI()};ck.append(cb);tr.append(ck);
   const ic=document.createElement('td');ic.style.width='54px';const box=document.createElement('div');box.className='ic';box.textContent=icon(it.n,it.d);
@@ -161,11 +230,36 @@ d.ondrop=async e=>{e.preventDefault();d.classList.remove('over');const out=[];
  const items=[...e.dataTransfer.items].map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry()).filter(x=>x);
  if(items.length){for(const en of items)await readEntry(en,'',out)}else[...e.dataTransfer.files].forEach(f=>out.push([f,f.name]));
  many(out)};
-document.addEventListener('keydown',e=>{if(e.key=='F5'&&!e.ctrlKey){e.preventDefault();ls(P)}});
-async function shared(){const r=await api('/web/list?c='+C);const j=await r.json();const f=${'$'}('files');
- if(!j.files.length){f.textContent='Nothing picked in “To send” on the phone · لا توجد ملفات';return}
- f.innerHTML='';for(const x of j.files){const row=document.createElement('div');row.style.padding='8px 0';
- const a=document.createElement('a');a.href='/web/dl?c='+C+'&i='+x.i;a.textContent='⬇ '+x.name+'  ('+size(x.size)+')';row.append(a);f.append(row)}}
+document.addEventListener('keydown',e=>{if(e.key=='F5'&&!e.ctrlKey){e.preventDefault();${'$'}('p2').classList.contains('hide')?ls(P):shared()}});
+async function shared(){const f=${'$'}('files');f.textContent='Loading… · جارٍ التحديث…';
+ const r=await api('/web/list?c='+C);if(r.status!=200){f.textContent='Could not load · تعذر التحميل';return}
+ const j=await r.json();SHARED=j.files||[];renderShared()}
+function renderShared(){const f=${'$'}('files');
+ if(!SHARED.length){f.textContent='Nothing picked in “To send” on the phone · لا توجد ملفات';return}
+ const qv=(${'$'}('sf').value||'').trim().toLowerCase(),tp=${'$'}('st').value,sr=${'$'}('ss').value;
+ const list=SHARED.filter(x=>(!qv||x.name.toLowerCase().includes(qv))&&(!tp||kind(x.name,false)==tp));
+ list.sort((a,b)=>{
+  if(sr=='name-asc')return a.name.localeCompare(b.name,undefined,{sensitivity:'base'});
+  if(sr=='name-desc')return b.name.localeCompare(a.name,undefined,{sensitivity:'base'});
+  if(sr=='size-desc')return b.size-a.size;
+  if(sr=='size-asc')return a.size-b.size;
+  if(sr=='type')return kind(a.name,false).localeCompare(kind(b.name,false))||a.name.localeCompare(b.name,undefined,{sensitivity:'base'});
+  return a.i-b.i});
+ if(!list.length){f.textContent='No matching files · لا توجد ملفات مطابقة';return}
+ f.innerHTML='';
+ const cnt=document.createElement('div');cnt.className='s';cnt.style.marginBottom='6px';
+ cnt.textContent=list.length==SHARED.length?SHARED.length+' files · ملف':list.length+' / '+SHARED.length+' files · ملف';
+ f.append(cnt);
+ const tbl=document.createElement('table');
+ for(const x of list){const tr=document.createElement('tr');
+  const ic=document.createElement('td');ic.style.width='42px';ic.textContent=icon(x.name,false);tr.append(ic);
+  const nm=document.createElement('td');nm.className='n';
+  const a=document.createElement('a');a.href='/web/dl?c='+C+'&i='+x.i;a.textContent=x.name;nm.append(a);
+  const sub=document.createElement('div');sub.className='s';sub.textContent=size(x.size);nm.append(sub);tr.append(nm);
+  const act=document.createElement('td');act.className='r act';
+  const dl=document.createElement('a');dl.textContent='⬇';dl.title='Download';dl.href='/web/dl?c='+C+'&i='+x.i;act.append(dl);
+  tr.append(act);tbl.append(tr)}
+ f.append(tbl)}
 document.addEventListener('keydown',e=>{if(e.key=='Escape')closeV()});
 ${'$'}('code').onkeyup=e=>{if(e.key=='Enter')go()};
 if(C){${'$'}('code').value=C;go()}
