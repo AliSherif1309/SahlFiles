@@ -41,7 +41,9 @@ class MainActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
     private val prefs by lazy { getSharedPreferences("app", MODE_PRIVATE) }
     private val thumbs = LruCache<String, Bitmap>(120)
-    private val thumbPool = Executors.newFixedThreadPool(2)
+    private val thumbPool = Executors.newFixedThreadPool(3)
+    private class RowMeta(val isDir: Boolean, val size: Long, val mod: Long, val count: Int, val iconRes: Int, val isThumb: Boolean, val dateStr: String)
+    private val rowMeta = java.util.concurrent.ConcurrentHashMap<String, RowMeta>()
 
     private var built = false
     private lateinit var pathTv: TextView
@@ -310,12 +312,24 @@ class MainActivity : Activity() {
         return fs.sortedWith(compareBy<File> { isDir[it] != true }.then(c))
     }
 
+    private fun buildMeta(f: File, df: DateFormat): RowMeta {
+        val d = f.isDirectory
+        val count = if (d) (f.list()?.size ?: 0) else 0
+        val size = if (d) 0L else f.length()
+        val mod = f.lastModified()
+        val icon = Fs.iconRes(f)
+        val thumb = !d && (Fs.isImage(f) || Fs.isVideo(f))
+        return RowMeta(d, size, mod, count, icon, thumb, df.format(Date(mod)))
+    }
+
     private fun load(d: File, keep: Boolean = false, select: String? = null) {
         if (!keep) savePos()
         searching = null
         val target = if (d.isDirectory) d else Fs.root
         Thread {
             val all = (target.listFiles() ?: emptyArray()).filter { showHidden || !it.name.startsWith(".") }
+            val df = DateFormat.getDateInstance(DateFormat.MEDIUM)
+            for (f in all) rowMeta[f.absolutePath] = buildMeta(f, df)
             val s = sorted(all)
             main.post {
                 dir = target; items = s
@@ -724,8 +738,11 @@ class MainActivity : Activity() {
 
     // ------------------------------------------------------------------ rows
 
+    private class Holder(val ic: ImageView, val img: ImageView, val name: TextView, val sub: TextView, val check: TextView)
+
     private inner class Adapter : BaseAdapter() {
         private val df = DateFormat.getDateInstance(DateFormat.MEDIUM)
+        private val selBg by lazy { round(C.SEL, 14) }
         var favSet: Set<String> = emptySet()
         override fun notifyDataSetChanged() { favSet = favs; super.notifyDataSetChanged() }
         override fun getCount() = items.size
@@ -733,53 +750,65 @@ class MainActivity : Activity() {
         override fun getItemId(p: Int) = p.toLong()
 
         override fun getView(p: Int, convert: View?, parent: ViewGroup?): View {
-            val row = (convert as? LinearLayout) ?: LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(14), dp(8), dp(14), dp(8))
-                val frame = FrameLayout(this@MainActivity).apply {
-                    background = round(C.CARD, 12)
-                    addView(ImageView(this@MainActivity).apply {
-                        scaleType = ImageView.ScaleType.CENTER_INSIDE; tag = "ic"
-                    }, FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
-                    addView(ImageView(this@MainActivity).apply { scaleType = ImageView.ScaleType.CENTER_CROP; tag = "img"; clipToOutline = true; background = round(C.CARD, 12) },
-                        FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+            val row: LinearLayout
+            val h: Holder
+            if (convert is LinearLayout && convert.tag is Holder) {
+                row = convert
+                h = convert.tag as Holder
+            } else {
+                val ic = ImageView(this@MainActivity).apply { scaleType = ImageView.ScaleType.CENTER_INSIDE }
+                val img = ImageView(this@MainActivity).apply { scaleType = ImageView.ScaleType.CENTER_CROP; clipToOutline = true; background = round(C.CARD, 12) }
+                val name = label("", 15f).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE }
+                val sub = label("", 12f, C.SUB).apply { maxLines = 1 }
+                val check = label("", 18f, C.GREEN)
+                row = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(14), dp(8), dp(14), dp(8))
+                    val frame = FrameLayout(this@MainActivity).apply {
+                        background = round(C.CARD, 12)
+                        addView(ic, FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER))
+                        addView(img, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+                    }
+                    addView(frame, LinearLayout.LayoutParams(dp(46), dp(46)))
+                    addView(LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, 0, 0)
+                        addView(name)
+                        addView(sub)
+                    }, lp(0, WRAP_CONTENT, 1f))
+                    addView(check)
                 }
-                addView(frame, LinearLayout.LayoutParams(dp(46), dp(46)))
-                addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.VERTICAL; setPadding(dp(14), 0, 0, 0)
-                    addView(label("", 15f).apply { tag = "name"; maxLines = 1; ellipsize = TextUtils.TruncateAt.MIDDLE })
-                    addView(label("", 12f, C.SUB).apply { tag = "sub"; maxLines = 1 })
-                }, lp(0, WRAP_CONTENT, 1f))
-                addView(label("", 18f, C.GREEN).apply { tag = "check" })
+                h = Holder(ic, img, name, sub, check)
+                row.tag = h
             }
             val f = items[p]
-            val ic = row.findViewWithTag<ImageView>("ic"); val img = row.findViewWithTag<ImageView>("img")
-            row.findViewWithTag<TextView>("name").text = if (f.absolutePath in favSet) "★ " + f.name else f.name
-            row.findViewWithTag<TextView>("sub").text = when {
+            val m = rowMeta[f.absolutePath] ?: buildMeta(f, df).also { rowMeta[f.absolutePath] = it }
+            h.name.text = if (f.absolutePath in favSet) "★ " + f.name else f.name
+            h.sub.text = when {
                 searching != null -> f.parent?.removePrefix(Fs.root.absolutePath)?.ifEmpty { "/" } ?: ""
-                f.isDirectory -> t("${f.list()?.size ?: 0} items", "${f.list()?.size ?: 0} عنصر") +
-                    (if (showSizes) " · " + (dirSizes[f.absolutePath]?.human() ?: "…") else "") + " · " + df.format(Date(f.lastModified()))
-                else -> f.length().human() + " · " + df.format(Date(f.lastModified()))
+                m.isDir -> t("${m.count} items", "${m.count} عنصر") +
+                    (if (showSizes) " · " + (dirSizes[f.absolutePath]?.human() ?: "…") else "") + " · " + m.dateStr
+                else -> m.size.human() + " · " + m.dateStr
             }
             val on = f in sel
-            row.findViewWithTag<TextView>("check").text = if (on) "✔" else ""
-            row.background = if (on) round(C.SEL, 14) else null
-            ic.setImageResource(Fs.iconRes(f))
-            img.setImageDrawable(null); img.visibility = View.GONE
-            if (f.isFile && (Fs.isImage(f) || Fs.isVideo(f))) {
-                val key = f.absolutePath + f.lastModified()
-                img.tag = "img"; img.setTag(R.id.thumb_key, key)
+            h.check.text = if (on) "✔" else ""
+            row.background = if (on) selBg else null
+            h.ic.setImageResource(m.iconRes)
+            h.img.setImageDrawable(null); h.img.visibility = View.INVISIBLE
+            if (m.isThumb) {
+                val key = f.absolutePath + m.mod
+                h.img.setTag(R.id.thumb_key, key)
                 val cached = thumbs.get(key)
-                if (cached != null) { img.setImageBitmap(cached); img.visibility = View.VISIBLE }
+                if (cached != null) { h.img.setImageBitmap(cached); h.img.visibility = View.VISIBLE }
                 else thumbPool.execute {
+                    if (h.img.getTag(R.id.thumb_key) != key) return@execute
                     val bmp = try {
                         if (Fs.isImage(f)) ThumbnailUtils.createImageThumbnail(f, Size(160, 160), null)
                         else ThumbnailUtils.createVideoThumbnail(f, Size(160, 160), null)
                     } catch (_: Exception) { null } ?: return@execute
                     thumbs.put(key, bmp)
-                    main.post { if (img.getTag(R.id.thumb_key) == key) { img.setImageBitmap(bmp); img.visibility = View.VISIBLE } }
+                    main.post { if (h.img.getTag(R.id.thumb_key) == key) { h.img.setImageBitmap(bmp); h.img.visibility = View.VISIBLE } }
                 }
-            } else img.setTag(R.id.thumb_key, null)
+            } else h.img.setTag(R.id.thumb_key, null)
             return row
         }
     }
