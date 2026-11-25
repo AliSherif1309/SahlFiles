@@ -61,7 +61,7 @@ class AutoClean : JobService() {
     private fun notify(bytes: Long) {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel("autoclean", t("Auto clean", "التنظيف التلقائي"), NotificationManager.IMPORTANCE_LOW))
-        nm.notify(5, Notification.Builder(this, "autoclean").setSmallIcon(android.R.drawable.ic_menu_delete)
+        nm.notify(5, SahlNotif.apply(this, Notification.Builder(this, "autoclean"))
             .setContentTitle(t("Sahl Files cleaned ${bytes.human()}", "نظّف سهل للملفات ${bytes.human()}"))
             .setContentText(t("Junk, app leftovers and caches. Moved files are in the Recycle bin.", "ملفات غير مفيدة وبقايا تطبيقات وذاكرة مؤقتة. الملفات المنقولة في المحذوفات."))
             .setAutoCancel(true)
