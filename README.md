@@ -1,21 +1,39 @@
-# Sahl Files · سهل للملفات
+<div align="center">
 
-A calm, fast file manager for Android phones, from the Sahl apps family.
+<img src="docs/banner.svg" alt="Sahl Files · سهل للملفات" width="100%"/>
 
-## Features
-- **Files**: browse, search, sort, copy, move, rename, share, folder and photo/video thumbnails, USB/SD cards, quick places (Download, Camera, WhatsApp…).
-- **Zip / unzip**: look inside zips, extract all or chosen files (Arabic names supported), compress a selection.
-- **Favourites and recent files**, **folder sizes**, and a **storage map** of what fills the phone.
-- **Built-in viewers**: pictures (zoom, next/previous), text and code, web pages (HTML), PDF, video and music — with “Open with…” always available.
-- **Recycle bin**: deleted items wait 30 days and can be restored.
-- **Cleaner (Pro)**: app caches (with Shizuku), leftovers of uninstalled apps, junk files, your own rules, duplicates, large files, APKs, old downloads, empty folders, exclusions and scheduled auto-clean.
-- **Private Vault**: AES-256 encrypted files, unlocked with fingerprint or PIN, hidden from the gallery, no screenshots.
-- **Sahl Share**: send and receive over Wi-Fi. Works with the **LocalSend** app on Windows, Mac, Linux, iPhone and Android, and with any browser (address + 6-digit code).
-- **In-app updates** from GitHub Releases.
-- Arabic and English, light and dark.
+<br/><br/>
 
-## Install
-Download the latest APK from [Releases](../../releases/latest). Android 11 or newer.
+[![Download APK](https://img.shields.io/github/v/release/AliSherif1309/SahlFiles?label=Download%20APK&color=0B5D4B&style=for-the-badge)](https://github.com/AliSherif1309/SahlFiles/releases/latest)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/AliSherif1309/SahlFiles/build.yml?label=Build&color=1E8A70&style=for-the-badge)](https://github.com/AliSherif1309/SahlFiles/actions)
+![Bilingual](https://img.shields.io/badge/Language-Arabic%20%26%20English-D4AF37?style=for-the-badge)
+![Privacy](https://img.shields.io/badge/Privacy-100%%20Offline-073D32?style=for-the-badge)
 
-## License
-[MIT](LICENSE)
+</div>
+
+---
+
+## ✨ Highlights
+
+| Feature | What it gives you |
+|---|---|
+| 📁 **Clear Folder Browsing** | Navigate internal storage, downloads, documents, and media with zero ads. |
+| 🔍 **Instant File Search** | Find documents, APKs, and folders quickly in Arabic or English. |
+| 📦 **Everyday File Actions** | Copy, move, rename, zip/unzip, and share files cleanly. |
+| 🌙 **Sahl Family Look** | Cohesive emerald & gold design with Arabic RTL and light/dark support. |
+
+---
+
+## 📲 Install in Seconds
+
+1. Tap **[Download Latest APK](https://github.com/AliSherif1309/SahlFiles/releases/latest)** above.
+2. Open the downloaded `.apk` file on your Android phone to install.
+3. **Sahl Files** checks for new versions automatically so you stay up to date in one tap.
+
+---
+
+## 🌿 The Sahl Apps Family · عائلة تطبيقات سهل
+
+A calm, ad-free, bilingual (**Arabic & English**) suite of everyday Android apps crafted in **Emerald & Gold**:
+
+[🎨 Sahl Theme](https://github.com/AliSherif1309/SahlHome) · [🕌 Sahl Adhan](https://github.com/AliSherif1309/SahlAdhan) · [🧭 Sahl Qibla](https://github.com/AliSherif1309/SahlQibla) · [📞 Sahl Phone](https://github.com/AliSherif1309/SahlPhone) · [👤 Sahl Contacts](https://github.com/AliSherif1309/SahlContacts) · [💬 Sahl Messages](https://github.com/AliSherif1309/SahlMessages) · [📷 Sahl Camera](https://github.com/AliSherif1309/SahlCamera) · [🖼️ Sahl Gallery](https://github.com/AliSherif1309/SahlGallery) · [📄 Sahl PDF](https://github.com/AliSherif1309/SahlPDF) · [🛠️ Sahl Tools](https://github.com/AliSherif1309/SahlTools) · [☁️ Sahl Sync](https://github.com/AliSherif1309/SahlSync) · [📺 Sahl TV](https://github.com/AliSherif1309/SahlTV-Launcher)
