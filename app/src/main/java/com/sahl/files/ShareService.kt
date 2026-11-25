@@ -65,7 +65,7 @@ class ShareService : Service(), Lan.Events {
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
     private fun note(title: String, text: String, progress: Int = -1): Notification =
-        Notification.Builder(this, CH).setSmallIcon(android.R.drawable.stat_sys_upload)
+        SahlNotif.apply(this, Notification.Builder(this, CH))
             .setContentTitle(title).setContentText(text).setOngoing(true).setOnlyAlertOnce(true)
             .setContentIntent(openApp(ShareActivity::class.java))
             .apply { if (progress >= 0) setProgress(100, progress, false) }
@@ -76,7 +76,7 @@ class ShareService : Service(), Lan.Events {
 
     private fun alert(id: Int, title: String, text: String, open: PendingIntent) {
         getSystemService(NotificationManager::class.java).notify(id,
-            Notification.Builder(this, CH_IN).setSmallIcon(android.R.drawable.stat_sys_download_done)
+            SahlNotif.apply(this, Notification.Builder(this, CH_IN))
                 .setContentTitle(title).setContentText(text).setStyle(Notification.BigTextStyle().bigText(text))
                 .setAutoCancel(true).setContentIntent(open).build())
     }
